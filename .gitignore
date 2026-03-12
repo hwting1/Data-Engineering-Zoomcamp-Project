@@ -1,2 +1,5 @@
 .bruin.yml
 *credentials*
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup

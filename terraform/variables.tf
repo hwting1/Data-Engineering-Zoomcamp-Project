@@ -1,6 +1,6 @@
 variable "credentials" {
   description = "GCP Credentials"
-  default     = "de-admin-credentials"
+  default     = "de-admin-credentials.json"
 }
 
 
@@ -21,12 +21,7 @@ variable "location" {
 
 variable "gcs_bucket_name" {
   description = "Google Cloud Storage Bucket Name"
-  default     = "nyc_citibike_bucket"
-}
-
-variable "gcs_storage_class" {
-  description = "Bucket Storage Class"
-  default     = "STANDARD"
+  default     = "nyc-citibike-bucket"
 }
 
 variable "bq_dataset_names" {
