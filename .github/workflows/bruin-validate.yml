@@ -1,0 +1,14 @@
+name: Bruin PR Validate
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bruin-data/setup-bruin@main
+      - name: Validate Pipeline
+        run: bruin validate ./citibike-pipeline/
