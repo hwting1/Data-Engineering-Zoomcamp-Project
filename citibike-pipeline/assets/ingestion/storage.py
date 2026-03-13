@@ -17,9 +17,6 @@ import polars as pl
 import requests
 from google.cloud import storage
 
-for k, v in os.environ.items():
-    print(k, "=", v)
-
 
 BUCKET_NAME = "nyc-citibike-bucket"
 BASE_URL = "https://s3.amazonaws.com/tripdata"
@@ -136,7 +133,17 @@ def upload_to_gcs(gcs_client, bucket_name, local_path, blob_name):
 months = get_months_to_download()
 print(f"Months to process: {months}")
 
-gcs_client = storage.Client()
+
+def get_gcs_client():
+    conn = json.loads(os.environ["nyc_citibike"])
+    sa_info = json.loads(conn["service_account_json"])
+    project_id = conn.get("project_id") or sa_info.get("project_id")
+
+    creds = service_account.Credentials.from_service_account_info(sa_info)
+    return storage.Client(project=project_id, credentials=creds)
+
+
+gcs_client = get_gcs_client()
 
 for ym in months:
     # Each month gets its own temp directory — automatically cleaned up at the end
