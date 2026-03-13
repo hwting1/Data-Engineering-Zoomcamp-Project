@@ -31,7 +31,6 @@ variable "bq_dataset_names" {
   default = [
     "raw",
     "staging",
-    "report_dev",
-    "report_prod"
+    "report",
   ]
 }
