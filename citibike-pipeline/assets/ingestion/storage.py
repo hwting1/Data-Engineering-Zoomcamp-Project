@@ -15,14 +15,16 @@ import tempfile
 from datetime import datetime, timedelta
 
 import polars as pl
+import pyarrow.parquet as pq
 import requests
-from google.oauth2 import service_account
 from google.cloud import storage
+from google.oauth2 import service_account
 
 
 BUCKET_NAME = "nyc-citibike-bucket"
 BASE_URL = "https://s3.amazonaws.com/tripdata"
-CSV_SCHEMA = {
+
+CSV_SCHEMA_OVERRIDES = {
     "ride_id": pl.Utf8,
     "rideable_type": pl.Utf8,
     "started_at": pl.Utf8,
@@ -38,19 +40,32 @@ CSV_SCHEMA = {
     "member_casual": pl.Utf8,
 }
 
+OUTPUT_COLUMNS = [
+    "ride_id",
+    "rideable_type",
+    "started_at",
+    "ended_at",
+    "start_station_name",
+    "start_station_id",
+    "end_station_name",
+    "end_station_id",
+    "start_lat",
+    "start_lng",
+    "end_lat",
+    "end_lng",
+    "member_casual",
+]
 
-def _prev_month_first(dt):
-    """Return the 1st day of the month before *dt*."""
+
+def _prev_month_first(dt: datetime) -> datetime:
     return (dt.replace(day=1) - timedelta(days=1)).replace(day=1)
 
 
-def _next_month_first(dt):
-    """Return the 1st day of the month after *dt*."""
+def _next_month_first(dt: datetime) -> datetime:
     return (dt.replace(day=28) + timedelta(days=4)).replace(day=1)
 
 
-def get_months_to_download():
-    """Determine which YYYYMM values to download based on BRUIN date window."""
+def get_months_to_download() -> list[str]:
     start = datetime.strptime(os.environ["BRUIN_START_DATE"], "%Y-%m-%d")
     end = datetime.strptime(os.environ["BRUIN_END_DATE"], "%Y-%m-%d")
 
@@ -65,31 +80,27 @@ def get_months_to_download():
     return months
 
 
-def download_zip(year_month, dest_path):
-    """Download the citibike tripdata zip for a given YYYYMM to *dest_path*."""
-    urls = [
-        f"{BASE_URL}/{year_month}-citibike-tripdata.csv.zip",
-        f"{BASE_URL}/{year_month}-citibike-tripdata.zip",
-    ]
+def download_zip(year_month: str, dest_path: str) -> None:
+    """Download the citibike tripdata zip for a given YYYYMM."""
+    url = f"{BASE_URL}/{year_month}-citibike-tripdata.zip"
+    print(f"Downloading {url}")
 
-    for url in urls:
-        print(f"Trying {url} ...")
-        with requests.get(url, stream=True, timeout=600) as resp:
-            if resp.status_code == 200:
-                with open(dest_path, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                        if chunk:
-                            f.write(chunk)
-                print(f"Downloaded {url}")
-                return
+    with requests.get(url, stream=True, timeout=600) as resp:
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Failed to download {url} (status={resp.status_code})"
+            )
 
-    raise RuntimeError(
-        f"Failed to download data for {year_month} from any known URL"
-    )
+        with open(dest_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+    size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+    print(f"Downloaded {size_mb:.1f} MB -> {dest_path}")
 
 
-def extract_zip(zip_path, extract_dir):
-    """Extract *zip_path* into *extract_dir*, skipping unsafe paths."""
+def extract_zip(zip_path: str, extract_dir: str) -> None:
     with zipfile.ZipFile(zip_path) as zf:
         for member in zf.namelist():
             member_path = os.path.realpath(os.path.join(extract_dir, member))
@@ -99,8 +110,7 @@ def extract_zip(zip_path, extract_dir):
             zf.extract(member, extract_dir)
 
 
-def get_csv_files(extract_dir):
-    """Return all CSV files under *extract_dir* recursively."""
+def get_csv_files(extract_dir: str) -> list[str]:
     csv_files = sorted(
         glob.glob(os.path.join(extract_dir, "**", "*.csv"), recursive=True)
     )
@@ -114,66 +124,113 @@ def get_csv_files(extract_dir):
     return csv_files
 
 
-def build_lazyframe(csv_files):
-    """Build a lazy Polars pipeline for all CSV files."""
-    lazy_frames = []
+def transform_batch(df: pl.DataFrame) -> pl.DataFrame:
+    existing = set(df.columns)
+    exprs = []
 
-    for csv_file in csv_files:
-        lf = (
-            pl.scan_csv(
+    for col in OUTPUT_COLUMNS:
+        if col in existing:
+            exprs.append(pl.col(col))
+        else:
+            exprs.append(pl.lit(None).alias(col))
+
+    df = df.select(exprs)
+
+    df = df.with_columns([
+        pl.col("ride_id").cast(pl.Utf8, strict=False),
+        pl.col("rideable_type").cast(pl.Utf8, strict=False),
+        pl.col("started_at").str.to_datetime(strict=False),
+        pl.col("ended_at").str.to_datetime(strict=False),
+        pl.col("start_station_name").cast(pl.Utf8, strict=False),
+        pl.col("start_station_id").cast(pl.Utf8, strict=False),
+        pl.col("end_station_name").cast(pl.Utf8, strict=False),
+        pl.col("end_station_id").cast(pl.Utf8, strict=False),
+        pl.col("start_lat").cast(pl.Float64, strict=False),
+        pl.col("start_lng").cast(pl.Float64, strict=False),
+        pl.col("end_lat").cast(pl.Float64, strict=False),
+        pl.col("end_lng").cast(pl.Float64, strict=False),
+        pl.col("member_casual").cast(pl.Utf8, strict=False),
+    ])
+
+    return df.select(OUTPUT_COLUMNS)
+
+
+def write_parquet_incrementally(
+    csv_files: list[str],
+    parquet_path: str,
+    batch_size: int = 100_000,
+) -> None:
+    writer = None
+    total_rows = 0
+
+    try:
+        for csv_file in csv_files:
+            print(f"Reading batched CSV: {csv_file}")
+
+            reader = pl.read_csv_batched(
                 csv_file,
-                schema=CSV_SCHEMA,
+                schema_overrides=CSV_SCHEMA_OVERRIDES,
+                infer_schema_length=0,
+                batch_size=batch_size,
                 low_memory=True,
                 ignore_errors=False,
             )
-            .select([
-                pl.col("ride_id"),
-                pl.col("rideable_type"),
-                pl.col("started_at").str.to_datetime(strict=False),
-                pl.col("ended_at").str.to_datetime(strict=False),
-                pl.col("start_station_name"),
-                pl.col("start_station_id"),
-                pl.col("end_station_name"),
-                pl.col("end_station_id"),
-                pl.col("start_lat"),
-                pl.col("start_lng"),
-                pl.col("end_lat"),
-                pl.col("end_lng"),
-                pl.col("member_casual"),
-            ])
-        )
-        lazy_frames.append(lf)
 
-    if len(lazy_frames) == 1:
-        return lazy_frames[0]
+            batch_idx = 0
+            while True:
+                batches = reader.next_batches(1)
+                if not batches:
+                    break
 
-    return pl.concat(lazy_frames, how="vertical")
+                for batch in batches:
+                    batch_idx += 1
+                    transformed = transform_batch(batch)
+                    arrow_table = transformed.to_arrow()
 
+                    if writer is None:
+                        writer = pq.ParquetWriter(
+                            parquet_path,
+                            arrow_table.schema,
+                            compression="zstd",
+                        )
 
-def write_parquet_from_csvs(csv_files, parquet_path):
-    """Stream all CSV files into a single parquet file."""
-    lf = build_lazyframe(csv_files)
+                    writer.write_table(arrow_table)
+                    total_rows += transformed.height
 
-    # 使用 sink_parquet，避免 collect 成完整 DataFrame 後再寫檔
-    lf.sink_parquet(
-        parquet_path,
-        compression="zstd",
-        maintain_order=True,
-    )
+                    print(
+                        f"  wrote batch {batch_idx} from {os.path.basename(csv_file)} "
+                        f"({transformed.height} rows, total={total_rows})"
+                    )
+
+                    del transformed
+                    del arrow_table
+                    del batch
+
+        if writer is None:
+            raise RuntimeError("No data was written to parquet.")
+
+    finally:
+        if writer is not None:
+            writer.close()
 
     size_mb = os.path.getsize(parquet_path) / (1024 * 1024)
     print(f"Parquet written: {size_mb:.1f} MB -> {parquet_path}")
+    print(f"Total rows written: {total_rows}")
 
 
-def upload_to_gcs(gcs_client, bucket_name, local_path, blob_name):
-    """Upload a local file to Google Cloud Storage."""
+def upload_to_gcs(
+    gcs_client: storage.Client,
+    bucket_name: str,
+    local_path: str,
+    blob_name: str,
+) -> None:
     bucket = gcs_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
     blob.upload_from_filename(local_path)
     print(f"Uploaded to gs://{bucket_name}/{blob_name}")
 
 
-def get_gcs_client():
+def get_gcs_client() -> storage.Client:
     conn = json.loads(os.environ["nyc_citibike"])
     sa_info = json.loads(conn["service_account_json"])
     project_id = conn.get("project_id") or sa_info.get("project_id")
@@ -182,41 +239,41 @@ def get_gcs_client():
     return storage.Client(project=project_id, credentials=creds)
 
 
-# ── Main execution ──────────────────────────────────────────────────────────
+def main() -> None:
+    months = get_months_to_download()
+    print(f"Months to process: {months}")
 
-months = get_months_to_download()
-print(f"Months to process: {months}")
+    gcs_client = get_gcs_client()
 
-gcs_client = get_gcs_client()
+    for ym in months:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            print(f"\n{'=' * 50}")
+            print(f"Processing {ym}")
+            print(f"{'=' * 50}")
 
-for ym in months:
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        print(f"\n{'=' * 50}")
-        print(f"Processing {ym}")
-        print(f"{'=' * 50}")
+            zip_path = os.path.join(tmp_dir, f"{ym}.zip")
+            extract_dir = os.path.join(tmp_dir, "extracted")
+            parquet_path = os.path.join(tmp_dir, f"{ym}-citibike-tripdata.parquet")
 
-        zip_path = os.path.join(tmp_dir, f"{ym}.zip")
-        extract_dir = os.path.join(tmp_dir, "extracted")
-        parquet_path = os.path.join(tmp_dir, f"{ym}-citibike-tripdata.parquet")
+            os.makedirs(extract_dir, exist_ok=True)
 
-        os.makedirs(extract_dir, exist_ok=True)
+            download_zip(ym, zip_path)
+            extract_zip(zip_path, extract_dir)
+            csv_files = get_csv_files(extract_dir)
 
-        # 1. Download zip
-        download_zip(ym, zip_path)
+            write_parquet_incrementally(
+                csv_files=csv_files,
+                parquet_path=parquet_path,
+                batch_size=100_000,
+            )
 
-        # 2. Extract
-        extract_zip(zip_path, extract_dir)
+            blob_name = f"{ym}-citibike-tripdata.parquet"
+            upload_to_gcs(gcs_client, BUCKET_NAME, parquet_path, blob_name)
 
-        # 3. Find CSV files
-        csv_files = get_csv_files(extract_dir)
+            print(f"Completed {ym} — temp files cleaned up")
 
-        # 4. Stream directly to parquet
-        write_parquet_from_csvs(csv_files, parquet_path)
+    print("\nAll months processed successfully.")
 
-        # 5. Upload parquet to GCS
-        blob_name = f"{ym}-citibike-tripdata.parquet"
-        upload_to_gcs(gcs_client, BUCKET_NAME, parquet_path, blob_name)
 
-        print(f"Completed {ym} — temp files cleaned up")
-
-print("\nAll months processed successfully.")
+if __name__ == "__main__":
+    main()
