@@ -15,16 +15,29 @@ import tempfile
 from datetime import datetime, timedelta
 
 import polars as pl
-import pyarrow.parquet as pq
 import requests
 from google.cloud import storage
 from google.oauth2 import service_account
 
 
+def get_memory_limit():
+    path = "/sys/fs/cgroup/memory.max"
+
+    if os.path.exists(path):
+        with open(path) as f:
+            limit = f.read().strip()
+            if limit != "max":
+                limit = int(limit)
+                print(f"Memory limit: {limit / (1024**3):.2f} GB")
+            else:
+                print("Memory limit: unlimited")
+
+get_memory_limit()
+
 BUCKET_NAME = "nyc-citibike-bucket"
 BASE_URL = "https://s3.amazonaws.com/tripdata"
 
-CSV_SCHEMA_OVERRIDES = {
+CSV_SCHEMA = {
     "ride_id": pl.Utf8,
     "rideable_type": pl.Utf8,
     "started_at": pl.Utf8,
@@ -81,7 +94,6 @@ def get_months_to_download() -> list[str]:
 
 
 def download_zip(year_month: str, dest_path: str) -> None:
-    """Download the citibike tripdata zip for a given YYYYMM."""
     url = f"{BASE_URL}/{year_month}-citibike-tripdata.zip"
     print(f"Downloading {url}")
 
@@ -124,98 +136,47 @@ def get_csv_files(extract_dir: str) -> list[str]:
     return csv_files
 
 
-def transform_batch(df: pl.DataFrame) -> pl.DataFrame:
-    existing = set(df.columns)
-    exprs = []
-
-    for col in OUTPUT_COLUMNS:
-        if col in existing:
-            exprs.append(pl.col(col))
-        else:
-            exprs.append(pl.lit(None).alias(col))
-
-    df = df.select(exprs)
-
-    df = df.with_columns([
-        pl.col("ride_id").cast(pl.Utf8, strict=False),
-        pl.col("rideable_type").cast(pl.Utf8, strict=False),
-        pl.col("started_at").str.to_datetime(strict=False),
-        pl.col("ended_at").str.to_datetime(strict=False),
-        pl.col("start_station_name").cast(pl.Utf8, strict=False),
-        pl.col("start_station_id").cast(pl.Utf8, strict=False),
-        pl.col("end_station_name").cast(pl.Utf8, strict=False),
-        pl.col("end_station_id").cast(pl.Utf8, strict=False),
-        pl.col("start_lat").cast(pl.Float64, strict=False),
-        pl.col("start_lng").cast(pl.Float64, strict=False),
-        pl.col("end_lat").cast(pl.Float64, strict=False),
-        pl.col("end_lng").cast(pl.Float64, strict=False),
-        pl.col("member_casual").cast(pl.Utf8, strict=False),
-    ])
-
-    return df.select(OUTPUT_COLUMNS)
+def build_csv_lazyframe(csv_file: str) -> pl.LazyFrame:
+    return (
+        pl.scan_csv(
+            csv_file,
+            schema=CSV_SCHEMA,
+            low_memory=True,
+            infer_schema_length=0,
+            glob=False,
+        )
+        .select([
+            pl.col("ride_id").cast(pl.Utf8, strict=False),
+            pl.col("rideable_type").cast(pl.Utf8, strict=False),
+            # 先保留字串，避免 ingestion 階段 datetime parsing 撐爆記憶體
+            pl.col("started_at").cast(pl.Utf8, strict=False),
+            pl.col("ended_at").cast(pl.Utf8, strict=False),
+            pl.col("start_station_name").cast(pl.Utf8, strict=False),
+            pl.col("start_station_id").cast(pl.Utf8, strict=False),
+            pl.col("end_station_name").cast(pl.Utf8, strict=False),
+            pl.col("end_station_id").cast(pl.Utf8, strict=False),
+            pl.col("start_lat").cast(pl.Float64, strict=False),
+            pl.col("start_lng").cast(pl.Float64, strict=False),
+            pl.col("end_lat").cast(pl.Float64, strict=False),
+            pl.col("end_lng").cast(pl.Float64, strict=False),
+            pl.col("member_casual").cast(pl.Utf8, strict=False),
+        ])
+    )
 
 
-def write_parquet_incrementally(
-    csv_files: list[str],
-    parquet_path: str,
-    batch_size: int = 100_000,
-) -> None:
-    writer = None
-    total_rows = 0
+def csv_to_parquet(csv_file: str, parquet_path: str) -> None:
+    print(f"Converting {csv_file} -> {parquet_path}")
 
-    try:
-        for csv_file in csv_files:
-            print(f"Reading batched CSV: {csv_file}")
+    lf = build_csv_lazyframe(csv_file)
 
-            reader = pl.read_csv_batched(
-                csv_file,
-                schema_overrides=CSV_SCHEMA_OVERRIDES,
-                infer_schema_length=0,
-                batch_size=batch_size,
-                low_memory=True,
-                ignore_errors=False,
-            )
-
-            batch_idx = 0
-            while True:
-                batches = reader.next_batches(1)
-                if not batches:
-                    break
-
-                for batch in batches:
-                    batch_idx += 1
-                    transformed = transform_batch(batch)
-                    arrow_table = transformed.to_arrow()
-
-                    if writer is None:
-                        writer = pq.ParquetWriter(
-                            parquet_path,
-                            arrow_table.schema,
-                            compression="zstd",
-                        )
-
-                    writer.write_table(arrow_table)
-                    total_rows += transformed.height
-
-                    print(
-                        f"  wrote batch {batch_idx} from {os.path.basename(csv_file)} "
-                        f"({transformed.height} rows, total={total_rows})"
-                    )
-
-                    del transformed
-                    del arrow_table
-                    del batch
-
-        if writer is None:
-            raise RuntimeError("No data was written to parquet.")
-
-    finally:
-        if writer is not None:
-            writer.close()
+    lf.sink_parquet(
+        parquet_path,
+        compression="zstd",
+        maintain_order=True,
+    )
 
     size_mb = os.path.getsize(parquet_path) / (1024 * 1024)
     print(f"Parquet written: {size_mb:.1f} MB -> {parquet_path}")
-    print(f"Total rows written: {total_rows}")
 
 
 def upload_to_gcs(
@@ -253,22 +214,23 @@ def main() -> None:
 
             zip_path = os.path.join(tmp_dir, f"{ym}.zip")
             extract_dir = os.path.join(tmp_dir, "extracted")
-            parquet_path = os.path.join(tmp_dir, f"{ym}-citibike-tripdata.parquet")
-
             os.makedirs(extract_dir, exist_ok=True)
 
             download_zip(ym, zip_path)
             extract_zip(zip_path, extract_dir)
             csv_files = get_csv_files(extract_dir)
 
-            write_parquet_incrementally(
-                csv_files=csv_files,
-                parquet_path=parquet_path,
-                batch_size=100_000,
-            )
+            for idx, csv_file in enumerate(csv_files, start=1):
+                parquet_filename = f"{ym}-citibike-tripdata_part{idx}.parquet"
+                parquet_path = os.path.join(tmp_dir, parquet_filename)
 
-            blob_name = f"{ym}-citibike-tripdata.parquet"
-            upload_to_gcs(gcs_client, BUCKET_NAME, parquet_path, blob_name)
+                csv_to_parquet(csv_file, parquet_path)
+                upload_to_gcs(
+                    gcs_client=gcs_client,
+                    bucket_name=BUCKET_NAME,
+                    local_path=parquet_path,
+                    blob_name=parquet_filename,
+                )
 
             print(f"Completed {ym} — temp files cleaned up")
 
