@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS `raw._citibike_trips_load` (
 LOAD DATA OVERWRITE `raw._citibike_trips_load`
 FROM FILES (
   format = 'PARQUET',
-  uris = ['gs://nyc-citibike-bucket/*-citibike-tripdata.parquet']
+  uris = ['gs://nyc-citibike-bucket/*-citibike-tripdata_part*.parquet']
 );
 
 -- Idempotent overwrite for the current run window in the final raw table
