@@ -221,7 +221,7 @@ def main() -> None:
             csv_files = get_csv_files(extract_dir)
 
             for idx, csv_file in enumerate(csv_files, start=1):
-                parquet_filename = f"{ym}-citibike-tripdata_part{idx}.parquet"
+                parquet_filename = f"{ym}-{idx:02d}-citibike-tripdata_part.parquet"
                 parquet_path = os.path.join(tmp_dir, parquet_filename)
 
                 csv_to_parquet(csv_file, parquet_path)
