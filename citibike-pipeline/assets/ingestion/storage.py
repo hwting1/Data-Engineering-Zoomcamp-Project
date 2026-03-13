@@ -17,6 +17,9 @@ import polars as pl
 import requests
 from google.cloud import storage
 
+for k, v in os.environ.items():
+    print(k, "=", v)
+
 
 BUCKET_NAME = "nyc-citibike-bucket"
 BASE_URL = "https://s3.amazonaws.com/tripdata"
