@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 
 import polars as pl
 import requests
+from google.oauth2 import service_account
 from google.cloud import storage
 
 
