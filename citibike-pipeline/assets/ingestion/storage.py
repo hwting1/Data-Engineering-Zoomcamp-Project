@@ -148,21 +148,30 @@ def build_csv_lazyframe(csv_file: str) -> pl.LazyFrame:
         .select([
             pl.col("ride_id").cast(pl.Utf8, strict=False),
             pl.col("rideable_type").cast(pl.Utf8, strict=False),
-            # 先保留字串，避免 ingestion 階段 datetime parsing 撐爆記憶體
-            pl.col("started_at").cast(pl.Utf8, strict=False),
-            pl.col("ended_at").cast(pl.Utf8, strict=False),
+
+            pl.col("started_at")
+                .str.to_datetime(strict=False)
+                .cast(pl.Datetime("us")),
+
+            pl.col("ended_at")
+                .str.to_datetime(strict=False)
+                .cast(pl.Datetime("us")),
+
             pl.col("start_station_name").cast(pl.Utf8, strict=False),
-            pl.col("start_station_id").cast(pl.Utf8, strict=False),
+            pl.col("start_station_id").cast(pl.Int64, strict=False),
+
             pl.col("end_station_name").cast(pl.Utf8, strict=False),
-            pl.col("end_station_id").cast(pl.Utf8, strict=False),
+            pl.col("end_station_id").cast(pl.Int64, strict=False),
+
             pl.col("start_lat").cast(pl.Float64, strict=False),
             pl.col("start_lng").cast(pl.Float64, strict=False),
             pl.col("end_lat").cast(pl.Float64, strict=False),
             pl.col("end_lng").cast(pl.Float64, strict=False),
+
             pl.col("member_casual").cast(pl.Utf8, strict=False),
         ])
     )
-
+    
 
 def csv_to_parquet(csv_file: str, parquet_path: str) -> None:
     print(f"Converting {csv_file} -> {parquet_path}")
