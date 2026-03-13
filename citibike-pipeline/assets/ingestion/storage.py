@@ -3,7 +3,7 @@
 name: ingestion.storage
 type: python
 image: python:3.12
-connection: google_cloud_platform
+connection: nyc_citibike
 
 @bruin"""
 
@@ -109,9 +109,9 @@ def enforce_schema(df):
         pl.col("started_at").str.to_datetime(format=None, strict=False),
         pl.col("ended_at").str.to_datetime(format=None, strict=False),
         pl.col("start_station_name").cast(pl.Utf8),
-        pl.col("start_station_id").cast(pl.Utf8),
+        pl.col("start_station_id").cast(pl.Int64),
         pl.col("end_station_name").cast(pl.Utf8),
-        pl.col("end_station_id").cast(pl.Utf8),
+        pl.col("end_station_id").cast(pl.Int64),
         pl.col("start_lat").cast(pl.Float64, strict=False),
         pl.col("start_lng").cast(pl.Float64, strict=False),
         pl.col("end_lat").cast(pl.Float64, strict=False),
