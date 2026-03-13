@@ -7,10 +7,8 @@ connection: nyc_citibike
 
 @bruin"""
 
-import os
-import zipfile
-import tempfile
-import glob
+import os, json, glob
+import zipfile, tempfile
 from datetime import datetime, timedelta
 
 import polars as pl
