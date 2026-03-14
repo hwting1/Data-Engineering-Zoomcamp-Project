@@ -186,7 +186,7 @@ def csv_to_parquet(csv_file: str, parquet_path: str) -> None:
     lf.sink_parquet(
         parquet_path,
         compression="zstd",
-        row_group_size=50_000
+        row_group_size=20000
     )
 
     size_mb = os.path.getsize(parquet_path) / (1024 * 1024)
