@@ -7,7 +7,8 @@ depends:
 
 materialization:
   type: table
-  strategy: create+replace
+  strategy: delete+insert
+  incremental_key: started_date
   partition_by: started_date
   cluster_by:
     - member_casual
@@ -47,7 +48,7 @@ columns:
 
   - name: started_date
     type: DATE
-    description: Date extracted from started_at, used for partitioning.
+    description: Date extracted from started_at, used for partitioning and incremental refresh.
     nullable: false
     checks:
       - name: not_null
@@ -87,7 +88,7 @@ columns:
 
   - name: start_station_id
     type: STRING
-    description: Numeric identifier of the origin station.
+    description: Station identifier of the origin station.
     nullable: true
 
   - name: end_station_name
@@ -97,7 +98,7 @@ columns:
 
   - name: end_station_id
     type: STRING
-    description: Numeric identifier of the destination station.
+    description: Station identifier of the destination station.
     nullable: true
 
   - name: start_lat
@@ -138,7 +139,7 @@ columns:
         value: ['member', 'casual']
 
   - name: ride_duration_minutes
-    type: INT64
+    type: FLOAT64
     description: Ride duration in minutes.
     nullable: false
     checks:
@@ -172,7 +173,13 @@ columns:
 
 @bruin */
 
-WITH standardized AS (
+WITH params AS (
+  SELECT
+    DATE_TRUNC(DATE_SUB(DATE('{{ start_date }}'), INTERVAL 1 MONTH), MONTH) AS backfill_start,
+    DATE_TRUNC(DATE('{{ end_date }}'), MONTH) AS backfill_end
+),
+
+standardized AS (
   SELECT
     ride_id,
     NULLIF(TRIM(rideable_type), '') AS rideable_type,
@@ -190,6 +197,9 @@ WITH standardized AS (
     source_month,
     loaded_at
   FROM `raw.citibike_trips`
+  CROSS JOIN params
+  WHERE DATE(started_at) >= backfill_start
+    AND DATE(started_at) < backfill_end
 ),
 
 filtered AS (
@@ -207,6 +217,17 @@ filtered AS (
     AND ABS(end_lat) <= 90
     AND ABS(start_lng) <= 180
     AND ABS(end_lng) <= 180
+),
+
+enriched AS (
+  SELECT
+    *,
+    TIMESTAMP_DIFF(ended_at, started_at, SECOND) AS ride_duration_seconds,
+    ST_DISTANCE(
+      ST_GEOGPOINT(start_lng, start_lat),
+      ST_GEOGPOINT(end_lng, end_lat)
+    ) / 1000.0 AS ride_distance_km
+  FROM filtered
 )
 
 SELECT
@@ -233,24 +254,15 @@ SELECT
 
   member_casual,
 
-  TIMESTAMP_DIFF(ended_at, started_at, MINUTE) AS ride_duration_minutes,
-
-  ST_DISTANCE(
-    ST_GEOGPOINT(start_lng, start_lat),
-    ST_GEOGPOINT(end_lng, end_lat)
-  ) / 1000.0 AS ride_distance_km,
+  ride_duration_seconds / 60.0 AS ride_duration_minutes,
+  ride_distance_km,
 
   CASE
-    WHEN TIMESTAMP_DIFF(ended_at, started_at, MINUTE) > 0 THEN
-      (
-        ST_DISTANCE(
-          ST_GEOGPOINT(start_lng, start_lat),
-          ST_GEOGPOINT(end_lng, end_lat)
-        ) / 1000.0
-      ) / (TIMESTAMP_DIFF(ended_at, started_at, MINUTE) / 60.0)
+    WHEN ride_duration_seconds > 0 THEN
+      ride_distance_km / (ride_duration_seconds / 3600.0)
     ELSE NULL
   END AS avg_speed_kmh,
 
   source_month,
   loaded_at
-FROM filtered;
+FROM enriched;
