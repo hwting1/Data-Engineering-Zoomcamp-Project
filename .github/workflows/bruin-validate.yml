@@ -1,8 +1,11 @@
 name: Bruin PR Validate
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
+
 
 jobs:
   validate:
