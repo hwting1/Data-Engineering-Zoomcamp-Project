@@ -1,7 +1,7 @@
 """Citi Bike Dashboard – multi-page Dash application."""
 
 import dash
-from dash import Dash, html, dcc
+from dash import Dash, dcc, html
 
 # Light blue background inspired by Looker Studio
 BG_COLOR = "#f4f6f9"

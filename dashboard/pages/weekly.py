@@ -1,11 +1,11 @@
 """Weekly Citi Bike Trend page."""
 
 import dash
-from dash import html, dcc, callback, Output, Input
 import plotly.express as px
 import polars as pl
+from dash import Input, Output, callback, dcc, html
 
-from data import load_weekly_trend, load_hourly_metrics
+from data import load_hourly_metrics, load_weekly_trend
 
 dash.register_page(__name__, name="Weekly Trend", path="/weekly")
 
@@ -105,7 +105,8 @@ def update_weekly(bike_filter: str):
 
     if df.is_empty():
         empty_fig = px.bar(title="No data available – run the pipeline first")
-        return _title, [{"label": "All", "value": "All"}], empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
+        no_opts = [{"label": "All", "value": "All"}]
+        return _title, no_opts, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
 
     bikes = sorted(df["rideable_type"].unique().to_list())
     options = [{"label": "All", "value": "All"}] + [{"label": b, "value": b} for b in bikes]

@@ -1,10 +1,9 @@
 """Hourly Usage Metrics page."""
 
 import dash
-from dash import html, dcc, callback, Output, Input
 import plotly.express as px
-import plotly.graph_objects as go
 import polars as pl
+from dash import Input, Output, callback, dcc, html
 
 from data import load_hourly_metrics
 
@@ -96,6 +95,7 @@ layout = html.Div(
 
 # --- Callbacks --------------------------------------------------------------
 
+
 def _kpi_card(label: str, value: str) -> html.Div:
     return html.Div(
         [
@@ -122,7 +122,8 @@ def update_hourly(member_filter: str):
 
     if df.is_empty():
         empty_fig = px.line(title="No data available – run the pipeline first")
-        return "Hourly Usage Metrics", "(no data)", [{"label": "All", "value": "All"}], [], empty_fig, empty_fig, empty_fig, empty_fig
+        no_opts = [{"label": "All", "value": "All"}]
+        return "Hourly Usage Metrics", "(no data)", no_opts, [], empty_fig, empty_fig, empty_fig, empty_fig
 
     mn, mx = df["metric_date"].min(), df["metric_date"].max()
     title = "Hourly Usage Metrics"
@@ -140,9 +141,11 @@ def update_hourly(member_filter: str):
     avg_dist = filtered.select(
         (pl.col("avg_ride_distance_km") * pl.col("ride_count")).sum() / pl.col("ride_count").sum()
     ).item()
-    avg_spd = filtered.filter(pl.col("avg_speed_kmh").is_not_null()).select(
-        (pl.col("avg_speed_kmh") * pl.col("ride_count")).sum() / pl.col("ride_count").sum()
-    ).item()
+    avg_spd = (
+        filtered.filter(pl.col("avg_speed_kmh").is_not_null())
+        .select((pl.col("avg_speed_kmh") * pl.col("ride_count")).sum() / pl.col("ride_count").sum())
+        .item()
+    )
 
     kpis = [
         _kpi_card("Avg Daily Rides", f"{avg_daily_rides:,.0f}"),
@@ -170,10 +173,7 @@ def update_hourly(member_filter: str):
     fig_line.update_layout(xaxis=dict(dtick=1), plot_bgcolor="white", paper_bgcolor="white")
 
     # --- Weekday vs Weekend ---
-    we_agg = (
-        filtered.group_by("is_weekend", "member_casual")
-        .agg(pl.col("ride_count").mean().alias("avg_rides"))
-    )
+    we_agg = filtered.group_by("is_weekend", "member_casual").agg(pl.col("ride_count").mean().alias("avg_rides"))
     we_agg = we_agg.with_columns(
         pl.when(pl.col("is_weekend")).then(pl.lit("Weekend")).otherwise(pl.lit("Weekday")).alias("day_type")
     )

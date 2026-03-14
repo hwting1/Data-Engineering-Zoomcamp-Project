@@ -1,9 +1,11 @@
 """Shared BigQuery data loading for the Citi Bike dashboard."""
 
-import os, json
+import json
+import os
+
 from dotenv import load_dotenv
-from google.oauth2 import service_account
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
 load_dotenv()
 PROJECT_ID = os.environ["GCP_PROJECT_ID"]
@@ -15,6 +17,7 @@ if service_account_json:
     _client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
 else:
     _client = bigquery.Client(project=PROJECT_ID)
+
 
 def _query(sql: str) -> list[dict]:
     """Run a BigQuery SQL query and return rows as list of dicts."""

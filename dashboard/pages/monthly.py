@@ -1,11 +1,11 @@
 """Monthly Citi Bike Metrics page."""
 
 import dash
-from dash import html, dcc, callback, Output, Input
 import plotly.express as px
 import polars as pl
+from dash import Input, Output, callback, dcc, html
 
-from data import load_monthly_metrics, load_hourly_metrics
+from data import load_hourly_metrics, load_monthly_metrics
 
 dash.register_page(__name__, name="Monthly Metrics", path="/monthly")
 
@@ -103,6 +103,7 @@ layout = html.Div(
 
 # --- Callbacks --------------------------------------------------------------
 
+
 def _kpi_card(label: str, value: str) -> html.Div:
     return html.Div(
         [
@@ -129,7 +130,8 @@ def update_monthly(member_filter: str):
 
     if df.is_empty():
         empty_fig = px.line(title="No data available – run the pipeline first")
-        return "Monthly Citi Bike Metrics", "(no data)", [{"label": "All", "value": "All"}], [], empty_fig, empty_fig, empty_fig, empty_fig
+        no_opts = [{"label": "All", "value": "All"}]
+        return "Monthly Citi Bike Metrics", "(no data)", no_opts, [], empty_fig, empty_fig, empty_fig, empty_fig
 
     mn, mx = _date_range()
     title = "Monthly Citi Bike Metrics"
