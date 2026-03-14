@@ -30,7 +30,7 @@ columns:
     checks:
       - name: not_null
       - name: accepted_values
-        value: ['classic_bike', 'electric_bike', 'docked_bike']
+        value: ['classic_bike', 'electric_bike']
 
   - name: started_at
     type: TIMESTAMP
