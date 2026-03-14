@@ -7,11 +7,8 @@ connection: nyc_citibike
 
 @bruin"""
 
-import os
-import json
-import glob
-import zipfile
-import tempfile
+import os, json, glob
+import zipfile, tempfile
 from datetime import datetime, timedelta
 
 import polars as pl
@@ -19,20 +16,6 @@ import requests
 from google.cloud import storage
 from google.oauth2 import service_account
 
-
-# def get_memory_limit():
-#     path = "/sys/fs/cgroup/memory.max"
-
-#     if os.path.exists(path):
-#         with open(path) as f:
-#             limit = f.read().strip()
-#             if limit != "max":
-#                 limit = int(limit)
-#                 print(f"Memory limit: {limit / (1024**3):.2f} GB")
-#             else:
-#                 print("Memory limit: unlimited")
-
-# get_memory_limit()
 
 BUCKET_NAME = "nyc-citibike-bucket"
 BASE_URL = "https://s3.amazonaws.com/tripdata"
@@ -68,9 +51,6 @@ OUTPUT_COLUMNS = [
     "end_lng",
     "member_casual",
 ]
-
-
-from datetime import datetime
 
 
 def get_months_to_download() -> list[str]:
@@ -186,7 +166,7 @@ def csv_to_parquet(csv_file: str, parquet_path: str) -> None:
     lf.sink_parquet(
         parquet_path,
         compression="zstd",
-        row_group_size=20000
+        row_group_size=10000
     )
 
     size_mb = os.path.getsize(parquet_path) / (1024 * 1024)
