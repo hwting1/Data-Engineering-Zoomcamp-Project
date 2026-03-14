@@ -6,5 +6,7 @@ terraform.tfstate
 terraform.tfstate.backup
 logs/runs
 logs/*.log
+.venv/
 __pycache__/
 *.py[cod]
+plotly-cloud.toml
