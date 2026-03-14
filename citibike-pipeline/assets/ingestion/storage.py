@@ -158,10 +158,10 @@ def build_csv_lazyframe(csv_file: str) -> pl.LazyFrame:
                 .cast(pl.Datetime("us")),
 
             pl.col("start_station_name").cast(pl.Utf8, strict=False),
-            pl.col("start_station_id").cast(pl.Int64, strict=False),
+            pl.col("start_station_id").cast(pl.Utf8, strict=False),
 
             pl.col("end_station_name").cast(pl.Utf8, strict=False),
-            pl.col("end_station_id").cast(pl.Int64, strict=False),
+            pl.col("end_station_id").cast(pl.Utf8, strict=False),
 
             pl.col("start_lat").cast(pl.Float64, strict=False),
             pl.col("start_lng").cast(pl.Float64, strict=False),

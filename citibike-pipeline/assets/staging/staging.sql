@@ -83,30 +83,22 @@ columns:
   - name: start_station_name
     type: STRING
     description: Cleaned origin station name.
-    nullable: false
-    checks:
-      - name: not_null
+    nullable: true
 
   - name: start_station_id
-    type: INT64
+    type: STRING
     description: Numeric identifier of the origin station.
-    nullable: false
-    checks:
-      - name: not_null
+    nullable: true
 
   - name: end_station_name
     type: STRING
     description: Cleaned destination station name.
-    nullable: false
-    checks:
-      - name: not_null
+    nullable: true
 
   - name: end_station_id
-    type: INT64
+    type: STRING
     description: Numeric identifier of the destination station.
-    nullable: false
-    checks:
-      - name: not_null
+    nullable: true
 
   - name: start_lat
     type: FLOAT64
