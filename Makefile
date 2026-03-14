@@ -1,4 +1,4 @@
-.PHONY: help init plan apply destroy run deploy
+.PHONY: help init plan apply destroy run deploy dashboard
 
 TF_DIR := terraform
 BRUIN_DIR := citibike-pipeline
@@ -16,6 +16,7 @@ help:
 	@echo "  make destroy     - terraform destroy"
 	@echo "  make deploy      - init + plan + apply"
 	@echo "  make run         - run bruin pipeline"
+	@echo "  make dashboard   - launch Dash dashboard"
 	@echo ""
 	@echo "Run options:"
 	@echo "  FULL_REFRESH=1"
@@ -42,3 +43,6 @@ run:
 	$(if $(FULL_REFRESH),--full-refresh,) \
 	$(if $(START_DATE),--start-date $(START_DATE),) \
 	$(if $(END_DATE),--end-date $(END_DATE),)
+
+dashboard:
+	cd dashboard && uv run plotly app run app:app --host 0.0.0.0 --debug
