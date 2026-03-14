@@ -13,7 +13,7 @@ DECLARE backfill_end DATE;
 -- Python processes the months derived from [BRUIN_START_DATE, BRUIN_END_DATE),
 -- shifted back by one month.
 SET backfill_start = DATE_TRUNC(DATE_SUB(DATE('{{ start_date }}'), INTERVAL 1 MONTH), MONTH);
-SET backfill_end = DATE_TRUNC(DATE_SUB(DATE('{{ end_date }}'), INTERVAL 1 MONTH), MONTH);
+SET backfill_end = DATE_TRUNC(DATE('{{ end_date }}'), MONTH);
 
 -- Final raw table: long-term storage in BigQuery
 CREATE TABLE IF NOT EXISTS `raw.citibike_trips` (

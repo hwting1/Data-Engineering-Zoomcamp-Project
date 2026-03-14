@@ -70,25 +70,31 @@ OUTPUT_COLUMNS = [
 ]
 
 
-def _prev_month_first(dt: datetime) -> datetime:
-    return (dt.replace(day=1) - timedelta(days=1)).replace(day=1)
-
-
-def _next_month_first(dt: datetime) -> datetime:
-    return (dt.replace(day=28) + timedelta(days=4)).replace(day=1)
+from datetime import datetime
 
 
 def get_months_to_download() -> list[str]:
     start = datetime.strptime(os.environ["BRUIN_START_DATE"], "%Y-%m-%d")
     end = datetime.strptime(os.environ["BRUIN_END_DATE"], "%Y-%m-%d")
-    print("start date:", start, "end date:", end)
+    print("start:", start, "end:", end)
+    start_year = start.year
+    start_month = start.month - 1
+    if start_month == 0:
+        start_year -= 1
+        start_month = 12
 
-    current = _prev_month_first(start)
-    last = end.replace(day=1)
+    end_year = end.year
+    end_month = end.month
+
     months = []
-    while current < last:
-        months.append(current.strftime("%Y%m"))
-        current = _next_month_first(current)
+    y, m = start_year, start_month
+
+    while (y, m) < (end_year, end_month):
+        months.append(f"{y}{m:02d}")
+        m += 1
+        if m == 13:
+            y += 1
+            m = 1
 
     return months
 
@@ -180,7 +186,6 @@ def csv_to_parquet(csv_file: str, parquet_path: str) -> None:
     lf.sink_parquet(
         parquet_path,
         compression="zstd",
-        # maintain_order=False,
         row_group_size=50_000
     )
 
