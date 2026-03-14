@@ -84,8 +84,7 @@ def get_months_to_download() -> list[str]:
     print("start date:", start, "end date:", end)
 
     current = _prev_month_first(start)
-    last = _prev_month_first(end)
-
+    last = end.replace(day=1)
     months = []
     while current < last:
         months.append(current.strftime("%Y%m"))
@@ -181,7 +180,8 @@ def csv_to_parquet(csv_file: str, parquet_path: str) -> None:
     lf.sink_parquet(
         parquet_path,
         compression="zstd",
-        maintain_order=False,
+        # maintain_order=False,
+        row_group_size=50_000
     )
 
     size_mb = os.path.getsize(parquet_path) / (1024 * 1024)
@@ -210,6 +210,7 @@ def get_gcs_client() -> storage.Client:
 
 
 def main() -> None:
+    pl.Config.set_streaming_chunk_size(10000)
     months = get_months_to_download()
     print(f"Months to process: {months}")
 
