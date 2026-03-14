@@ -20,19 +20,19 @@ from google.cloud import storage
 from google.oauth2 import service_account
 
 
-def get_memory_limit():
-    path = "/sys/fs/cgroup/memory.max"
+# def get_memory_limit():
+#     path = "/sys/fs/cgroup/memory.max"
 
-    if os.path.exists(path):
-        with open(path) as f:
-            limit = f.read().strip()
-            if limit != "max":
-                limit = int(limit)
-                print(f"Memory limit: {limit / (1024**3):.2f} GB")
-            else:
-                print("Memory limit: unlimited")
+#     if os.path.exists(path):
+#         with open(path) as f:
+#             limit = f.read().strip()
+#             if limit != "max":
+#                 limit = int(limit)
+#                 print(f"Memory limit: {limit / (1024**3):.2f} GB")
+#             else:
+#                 print("Memory limit: unlimited")
 
-get_memory_limit()
+# get_memory_limit()
 
 BUCKET_NAME = "nyc-citibike-bucket"
 BASE_URL = "https://s3.amazonaws.com/tripdata"
@@ -81,6 +81,7 @@ def _next_month_first(dt: datetime) -> datetime:
 def get_months_to_download() -> list[str]:
     start = datetime.strptime(os.environ["BRUIN_START_DATE"], "%Y-%m-%d")
     end = datetime.strptime(os.environ["BRUIN_END_DATE"], "%Y-%m-%d")
+    print("start date:", start, "end date:", end)
 
     current = _prev_month_first(start)
     last = _prev_month_first(end)
@@ -142,7 +143,6 @@ def build_csv_lazyframe(csv_file: str) -> pl.LazyFrame:
             csv_file,
             schema=CSV_SCHEMA,
             low_memory=True,
-            infer_schema_length=0,
             glob=False,
         )
         .select([
@@ -181,7 +181,7 @@ def csv_to_parquet(csv_file: str, parquet_path: str) -> None:
     lf.sink_parquet(
         parquet_path,
         compression="zstd",
-        maintain_order=True,
+        maintain_order=False,
     )
 
     size_mb = os.path.getsize(parquet_path) / (1024 * 1024)
