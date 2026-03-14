@@ -1,5 +1,6 @@
 .bruin.yml
 *credentials*
+.env
 .terraform/
 terraform.tfstate
 terraform.tfstate.backup
