@@ -61,6 +61,20 @@ columns:
     description: Average ride speed in kilometers per hour for the month.
     nullable: true
 
+  - name: unique_start_stations
+    type: INT64
+    description: Count of distinct start stations in the month.
+    nullable: false
+    checks:
+      - name: not_null
+
+  - name: unique_end_stations
+    type: INT64
+    description: Count of distinct end stations in the month.
+    nullable: false
+    checks:
+      - name: not_null
+
 @bruin */
 
 SELECT
@@ -70,7 +84,9 @@ SELECT
   COUNT(*) AS ride_count,
   AVG(ride_duration_minutes) AS avg_ride_duration_minutes,
   AVG(ride_distance_km) AS avg_ride_distance_km,
-  AVG(avg_speed_kmh) AS avg_speed_kmh
+  AVG(avg_speed_kmh) AS avg_speed_kmh,
+  COUNT(DISTINCT start_station_id) AS unique_start_stations,
+  COUNT(DISTINCT end_station_id) AS unique_end_stations
 FROM `staging.citibike_trips_clean`
 GROUP BY
   metric_month,
