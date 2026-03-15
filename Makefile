@@ -3,9 +3,15 @@
 TF_DIR := terraform
 BRUIN_DIR := citibike-pipeline
 
+TF_CREDENTIALS ?=
+TF_PROJECT ?=
 FULL_REFRESH ?=
 START_DATE ?=
 END_DATE ?=
+
+TF_VARS := \
+	$(if $(GCP_CREDENTIALS),-var "credentials=$(GCP_CREDENTIALS)",) \
+	$(if $(GCP_PROJECT),-var "project=$(GCP_PROJECT)",)
 
 help:
 	@echo ""
@@ -18,6 +24,10 @@ help:
 	@echo "  make run         - run bruin pipeline"
 	@echo "  make dashboard   - launch Dash dashboard"
 	@echo ""
+	@echo "Terraform options:"
+	@echo "  GCP_CREDENTIALS=path/to/credentials.json"
+	@echo "  GCP_PROJECT=my-gcp-project-id"
+	@echo ""
 	@echo "Run options:"
 	@echo "  FULL_REFRESH=1"
 	@echo "  START_DATE=YYYY-MM-DD"
@@ -28,13 +38,13 @@ init:
 	terraform -chdir=$(TF_DIR) init
 
 plan:
-	terraform -chdir=$(TF_DIR) plan
+	terraform -chdir=$(TF_DIR) plan $(TF_VARS)
 
 apply:
-	terraform -chdir=$(TF_DIR) apply
+	terraform -chdir=$(TF_DIR) apply $(TF_VARS)
 
 destroy:
-	terraform -chdir=$(TF_DIR) destroy
+	terraform -chdir=$(TF_DIR) destroy $(TF_VARS)
 
 deploy: init plan apply
 
