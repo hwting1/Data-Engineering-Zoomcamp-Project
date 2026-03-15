@@ -3,8 +3,8 @@
 TF_DIR := terraform
 BRUIN_DIR := citibike-pipeline
 
-TF_CREDENTIALS ?=
-TF_PROJECT ?=
+GCP_CREDENTIALS ?=
+GCP_PROJECT ?=
 FULL_REFRESH ?=
 START_DATE ?=
 END_DATE ?=
