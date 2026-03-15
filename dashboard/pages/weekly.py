@@ -9,9 +9,6 @@ from data import load_hourly_metrics, load_weekly_trend
 
 dash.register_page(__name__, name="Weekly Trend", path="/weekly")
 
-_df: pl.DataFrame | None = None
-_title: str = "Weekly Citi Bike Trend"
-
 _WEEKDAY_ORDER = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
 GRAPH_BOX = {
@@ -20,6 +17,9 @@ GRAPH_BOX = {
     "padding": "8px",
     "boxShadow": "0 1px 4px rgba(0,0,0,0.08)",
 }
+
+_df: pl.DataFrame | None = None
+_title: str = "Weekly Citi Bike Trend"
 
 
 def _get_df() -> pl.DataFrame:
@@ -106,7 +106,8 @@ def update_weekly(bike_filter: str):
     if df.is_empty():
         empty_fig = px.bar(title="No data available – run the pipeline first")
         no_opts = [{"label": "All", "value": "All"}]
-        return _title, no_opts, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig
+        return (_title, no_opts, empty_fig, empty_fig, empty_fig,
+                empty_fig, empty_fig, empty_fig)
 
     bikes = sorted(df["rideable_type"].unique().to_list())
     options = [{"label": "All", "value": "All"}] + [{"label": b, "value": b} for b in bikes]
@@ -222,4 +223,5 @@ def update_weekly(bike_filter: str):
     )
     fig_dist.update_layout(**_layout)
 
-    return _title, options, fig_mem_donut, fig_mem_day, fig_bike_donut, fig_bike_day, fig_dur, fig_dist
+    return (_title, options, fig_mem_donut, fig_mem_day, fig_bike_donut,
+            fig_bike_day, fig_dur, fig_dist)

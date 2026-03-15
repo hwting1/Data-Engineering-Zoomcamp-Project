@@ -59,3 +59,27 @@ def load_monthly_metrics() -> list[dict]:
         FROM `{PROJECT_ID}.report.monthly_citibike_metrics`
         ORDER BY metric_month
     """)
+
+
+def load_top_stations(direction: str = "start",
+                      limit: int = 10) -> list[dict]:
+    """Top stations by avg monthly trip count. direction: 'start' or 'end'."""
+    col_id = f"{direction}_station_id"
+    col_name = f"{direction}_station_name"
+    return _query(f"""
+        SELECT
+            station_name,
+            ROUND(AVG(monthly_trips)) AS avg_trips
+        FROM (
+            SELECT
+                {col_name} AS station_name,
+                DATE_TRUNC(started_at, MONTH) AS month,
+                COUNT(*) AS monthly_trips
+            FROM `{PROJECT_ID}.staging.citibike_trips_clean`
+            WHERE {col_id} IS NOT NULL
+            GROUP BY station_name, month
+        )
+        GROUP BY station_name
+        ORDER BY avg_trips DESC
+        LIMIT {int(limit)}
+    """)

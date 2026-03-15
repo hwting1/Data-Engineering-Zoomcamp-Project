@@ -3,13 +3,11 @@
 import dash
 import plotly.express as px
 import polars as pl
-from dash import Input, Output, callback, dcc, html
+from dash import Input, Output, callback, dcc, html, dash_table
 
-from data import load_hourly_metrics, load_monthly_metrics
+from data import load_hourly_metrics, load_monthly_metrics, load_top_stations
 
 dash.register_page(__name__, name="Monthly Metrics", path="/monthly")
-
-_df: pl.DataFrame | None = None
 
 CARD = {
     "backgroundColor": "white",
@@ -26,21 +24,32 @@ GRAPH_BOX = {
     "padding": "8px",
     "boxShadow": "0 1px 4px rgba(0,0,0,0.08)",
 }
+TABLE_HEADER_STYLE = {
+    "backgroundColor": "#4e79a7",
+    "color": "white",
+    "fontWeight": "bold",
+    "textAlign": "center",
+    "padding": "8px",
+}
+
+_df: pl.DataFrame | None = None
+_subtitle: str = ""
 
 
 def _get_df() -> pl.DataFrame:
-    global _df
+    global _df, _subtitle
     if _df is None:
         _df = pl.DataFrame(load_monthly_metrics())
+        hourly = pl.DataFrame(load_hourly_metrics())
+        if not hourly.is_empty():
+            mn = hourly["metric_date"].min()
+            mx = hourly["metric_date"].max()
+            _subtitle = f"Data range: {mn} – {mx}"
+        elif not _df.is_empty():
+            mn = _df["metric_month"].min()
+            mx = _df["metric_month"].max()
+            _subtitle = f"Data range: {mn} – {mx}"
     return _df
-
-
-def _date_range() -> tuple[str, str]:
-    hourly = pl.DataFrame(load_hourly_metrics())
-    if not hourly.is_empty():
-        return str(hourly["metric_date"].min()), str(hourly["metric_date"].max())
-    df = _get_df()
-    return str(df["metric_month"].min()), str(df["metric_month"].max())
 
 
 # --- Layout ----------------------------------------------------------------
@@ -95,13 +104,41 @@ layout = html.Div(
                 html.Div(dcc.Graph(id="monthly-dur-line"), style={**GRAPH_BOX, "flex": "1"}),
                 html.Div(dcc.Graph(id="monthly-dist-line"), style={**GRAPH_BOX, "flex": "1"}),
             ],
+            style={"display": "flex", "gap": "16px", "marginBottom": "16px"},
+        ),
+        # --- Row 3: Top 10 Departure Stations (bar + table) ---
+        html.Div(
+            [
+                html.Div(dcc.Graph(id="monthly-top-start-bar"), style={**GRAPH_BOX, "flex": "1"}),
+                html.Div(
+                    [
+                        html.H4("Top 10 Departure Stations", style={"margin": "0 0 8px 0", "textAlign": "center"}),
+                        html.Div(id="monthly-top-start-table"),
+                    ],
+                    style={**GRAPH_BOX, "flex": "1"},
+                ),
+            ],
+            style={"display": "flex", "gap": "16px", "marginBottom": "16px"},
+        ),
+        # --- Row 4: Top 10 Arrival Stations (bar + table) ---
+        html.Div(
+            [
+                html.Div(dcc.Graph(id="monthly-top-end-bar"), style={**GRAPH_BOX, "flex": "1"}),
+                html.Div(
+                    [
+                        html.H4("Top 10 Arrival Stations", style={"margin": "0 0 8px 0", "textAlign": "center"}),
+                        html.Div(id="monthly-top-end-table"),
+                    ],
+                    style={**GRAPH_BOX, "flex": "1"},
+                ),
+            ],
             style={"display": "flex", "gap": "16px"},
         ),
     ]
 )
 
 
-# --- Callbacks --------------------------------------------------------------
+# --- Helpers ----------------------------------------------------------------
 
 
 def _kpi_card(label: str, value: str) -> html.Div:
@@ -114,6 +151,38 @@ def _kpi_card(label: str, value: str) -> html.Div:
     )
 
 
+def _station_table(rows: pl.DataFrame) -> dash_table.DataTable:
+    """Build a numbered DataTable for top stations."""
+    data = rows.with_row_index(name="#", offset=1).rename(
+        {"station_name": "Station Name", "avg_trips": "Avg Monthly Trips"}
+    ).with_columns(
+        pl.col("Avg Monthly Trips").map_elements(lambda v: f"{v:,}", return_dtype=pl.Utf8)
+    ).to_pandas().to_dict("records")
+
+    return dash_table.DataTable(
+        data=data,
+        columns=[
+            {"name": "#", "id": "#"},
+            {"name": "Station Name", "id": "Station Name"},
+            {"name": "Avg Monthly Trips", "id": "Avg Monthly Trips"},
+        ],
+        style_header=TABLE_HEADER_STYLE,
+        style_cell={"textAlign": "left", "padding": "6px 10px", "fontSize": "13px"},
+        style_cell_conditional=[
+            {"if": {"column_id": "#"}, "width": "40px", "textAlign": "center"},
+            {"if": {"column_id": "Avg Monthly Trips"}, "textAlign": "right", "width": "140px"},
+        ],
+        style_data_conditional=[
+            {"if": {"row_index": "odd"}, "backgroundColor": "#f9f9f9"},
+        ],
+        style_table={"overflowX": "auto"},
+        page_action="none",
+    )
+
+
+# --- Callbacks --------------------------------------------------------------
+
+
 @callback(
     Output("monthly-title", "children"),
     Output("monthly-subtitle", "children"),
@@ -123,6 +192,10 @@ def _kpi_card(label: str, value: str) -> html.Div:
     Output("monthly-bike-stack", "figure"),
     Output("monthly-dur-line", "figure"),
     Output("monthly-dist-line", "figure"),
+    Output("monthly-top-start-bar", "figure"),
+    Output("monthly-top-start-table", "children"),
+    Output("monthly-top-end-bar", "figure"),
+    Output("monthly-top-end-table", "children"),
     Input("monthly-member-filter", "value"),
 )
 def update_monthly(member_filter: str):
@@ -131,11 +204,11 @@ def update_monthly(member_filter: str):
     if df.is_empty():
         empty_fig = px.line(title="No data available – run the pipeline first")
         no_opts = [{"label": "All", "value": "All"}]
-        return "Monthly Citi Bike Metrics", "(no data)", no_opts, [], empty_fig, empty_fig, empty_fig, empty_fig
+        return ("Monthly Citi Bike Metrics", "(no data)", no_opts, [],
+                empty_fig, empty_fig, empty_fig, empty_fig,
+                empty_fig, html.Div(), empty_fig, html.Div())
 
-    mn, mx = _date_range()
     title = "Monthly Citi Bike Metrics"
-    subtitle = f"Data range: {mn} – {mx}"
 
     members = sorted(df["member_casual"].unique().to_list())
     options = [{"label": "All", "value": "All"}] + [{"label": m, "value": m} for m in members]
@@ -149,13 +222,12 @@ def update_monthly(member_filter: str):
     avg_dist = filtered.select(
         (pl.col("avg_ride_distance_km") * pl.col("ride_count")).sum() / pl.col("ride_count").sum()
     ).item()
-    num_months = filtered["metric_month"].n_unique()
 
     kpis = [
         _kpi_card("Avg Monthly Rides", f"{avg_monthly_rides:,.0f}"),
         _kpi_card("Avg Duration", f"{avg_dur:.1f} min"),
         _kpi_card("Avg Distance", f"{avg_dist:.2f} km"),
-        _kpi_card("Months Covered", str(num_months)),
+        _kpi_card("Months Covered", str(n_months)),
     ]
 
     _layout = dict(plot_bgcolor="white", paper_bgcolor="white")
@@ -240,4 +312,42 @@ def update_monthly(member_filter: str):
     )
     fig_dist.update_layout(**_layout)
 
-    return title, subtitle, options, kpis, fig_rides, fig_bike, fig_dur, fig_dist
+    # --- Top 10 Departure Stations ---
+    start_rows = pl.DataFrame(load_top_stations("start", 10))
+    if not start_rows.is_empty():
+        fig_start = px.bar(
+            start_rows.to_pandas(),
+            x="station_name",
+            y="avg_trips",
+            title="Top 10 Departure Stations (Avg Monthly Trips)",
+            labels={"station_name": "", "avg_trips": "Avg Monthly Trips"},
+            color_discrete_sequence=["#4e79a7"],
+        )
+        fig_start.update_layout(**_layout, xaxis_tickangle=-45)
+        tbl_start = _station_table(start_rows)
+    else:
+        fig_start = px.bar(title="No station data available")
+        fig_start.update_layout(**_layout)
+        tbl_start = html.Div("No data")
+
+    # --- Top 10 Arrival Stations ---
+    end_rows = pl.DataFrame(load_top_stations("end", 10))
+    if not end_rows.is_empty():
+        fig_end = px.bar(
+            end_rows.to_pandas(),
+            x="station_name",
+            y="avg_trips",
+            title="Top 10 Arrival Stations (Avg Monthly Trips)",
+            labels={"station_name": "", "avg_trips": "Avg Monthly Trips"},
+            color_discrete_sequence=["#f28e2b"],
+        )
+        fig_end.update_layout(**_layout, xaxis_tickangle=-45)
+        tbl_end = _station_table(end_rows)
+    else:
+        fig_end = px.bar(title="No station data available")
+        fig_end.update_layout(**_layout)
+        tbl_end = html.Div("No data")
+
+    return (title, _subtitle, options, kpis,
+            fig_rides, fig_bike, fig_dur, fig_dist,
+            fig_start, tbl_start, fig_end, tbl_end)

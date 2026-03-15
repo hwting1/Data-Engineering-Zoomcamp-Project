@@ -9,7 +9,6 @@ from data import load_hourly_metrics
 
 dash.register_page(__name__, name="Hourly Metrics", path="/")
 
-_df: pl.DataFrame | None = None
 CARD = {
     "backgroundColor": "white",
     "borderRadius": "8px",
@@ -25,6 +24,8 @@ GRAPH_BOX = {
     "padding": "8px",
     "boxShadow": "0 1px 4px rgba(0,0,0,0.08)",
 }
+
+_df: pl.DataFrame | None = None
 
 
 def _get_df() -> pl.DataFrame:
@@ -123,7 +124,8 @@ def update_hourly(member_filter: str):
     if df.is_empty():
         empty_fig = px.line(title="No data available – run the pipeline first")
         no_opts = [{"label": "All", "value": "All"}]
-        return "Hourly Usage Metrics", "(no data)", no_opts, [], empty_fig, empty_fig, empty_fig, empty_fig
+        return ("Hourly Usage Metrics", "(no data)", no_opts, [],
+                empty_fig, empty_fig, empty_fig, empty_fig)
 
     mn, mx = df["metric_date"].min(), df["metric_date"].max()
     title = "Hourly Usage Metrics"
