@@ -1,6 +1,6 @@
 variable "credentials" {
   description = "GCP Credentials"
-  default     = "de-admin-credentials.json"
+  default     = "../de-admin-credentials.json"
 }
 
 
