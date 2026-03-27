@@ -83,3 +83,41 @@ def load_top_stations(direction: str = "start",
         ORDER BY avg_trips DESC
         LIMIT {int(limit)}
     """)
+
+
+def load_yoy_monthly() -> list[dict]:
+    """Monthly metrics with year extracted for year-over-year comparison."""
+    return _query(f"""
+        SELECT
+            EXTRACT(YEAR FROM metric_month) AS year,
+            EXTRACT(MONTH FROM metric_month) AS month,
+            member_casual,
+            rideable_type,
+            SUM(ride_count) AS ride_count,
+            SUM(avg_ride_duration_minutes * ride_count) / SUM(ride_count) AS avg_ride_duration_minutes,
+            SUM(avg_ride_distance_km * ride_count) / SUM(ride_count) AS avg_ride_distance_km,
+            SUM(COALESCE(avg_speed_kmh, 0) * ride_count)
+                / NULLIF(SUM(CASE WHEN avg_speed_kmh IS NOT NULL
+                    THEN ride_count END), 0) AS avg_speed_kmh
+        FROM `{PROJECT_ID}.report.monthly_citibike_metrics`
+        WHERE metric_month >= '2024-01-01' AND metric_month < '2026-01-01'
+        GROUP BY year, month, member_casual, rideable_type
+        ORDER BY year, month
+    """)
+
+
+def load_yoy_top_stations(direction: str = "start") -> list[dict]:
+    """Top stations per year (2024 & 2025) by total trip count."""
+    col_id = f"{direction}_station_id"
+    col_name = f"{direction}_station_name"
+    return _query(f"""
+        SELECT
+            EXTRACT(YEAR FROM started_at) AS year,
+            {col_name} AS station_name,
+            COUNT(*) AS trip_count
+        FROM `{PROJECT_ID}.staging.citibike_trips_clean`
+        WHERE {col_id} IS NOT NULL
+          AND started_at >= '2024-01-01' AND started_at < '2026-01-01'
+        GROUP BY year, station_name
+        ORDER BY year, trip_count DESC
+    """)
