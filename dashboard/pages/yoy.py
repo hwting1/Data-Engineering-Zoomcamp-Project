@@ -7,7 +7,7 @@ from dash import Input, Output, callback, dash_table, dcc, html
 
 from data import load_yoy_monthly, load_yoy_top_stations
 
-dash.register_page(__name__, name="2024 vs 2025", path="/yoy")
+dash.register_page(__name__, name="2024 vs 2025", path="/yoy", order=4)
 
 CARD = {
     "backgroundColor": "white",
@@ -382,6 +382,7 @@ def update_yoy(member_filter: str):
         filtered.group_by("year", "member_casual")
         .agg(pl.col("ride_count").sum().alias("rides"))
         .with_columns(pl.col("year").cast(pl.Utf8))
+        .sort("year")
     )
     fig_member = px.bar(
         mem_yr.to_pandas(),
@@ -392,6 +393,7 @@ def update_yoy(member_filter: str):
         title="Rides by Membership Type",
         labels={"member_casual": "Membership", "rides": "Total Rides", "year": "Year"},
         color_discrete_map={"2024": YEAR_COLORS[2024], "2025": YEAR_COLORS[2025]},
+        category_orders={"year": ["2024", "2025"]},
     )
     fig_member.update_layout(**_layout)
 
@@ -400,6 +402,7 @@ def update_yoy(member_filter: str):
         filtered.group_by("year", "rideable_type")
         .agg(pl.col("ride_count").sum().alias("rides"))
         .with_columns(pl.col("year").cast(pl.Utf8))
+        .sort("year")
     )
     fig_bike = px.bar(
         bike_yr.to_pandas(),
@@ -410,6 +413,7 @@ def update_yoy(member_filter: str):
         title="Rides by Bike Type",
         labels={"rideable_type": "Bike Type", "rides": "Total Rides", "year": "Year"},
         color_discrete_map={"2024": YEAR_COLORS[2024], "2025": YEAR_COLORS[2025]},
+        category_orders={"year": ["2024", "2025"]},
     )
     fig_bike.update_layout(**_layout)
 

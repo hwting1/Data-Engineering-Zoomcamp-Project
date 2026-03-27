@@ -7,7 +7,7 @@ from dash import Input, Output, callback, dcc, html
 
 from data import load_hourly_metrics
 
-dash.register_page(__name__, name="Hourly Metrics", path="/")
+dash.register_page(__name__, name="Hourly Metrics", path="/", order=1)
 
 CARD = {
     "backgroundColor": "white",
@@ -74,19 +74,19 @@ layout = html.Div(
         ),
         # --- KPI cards ---
         html.Div(id="hourly-kpis", style={"display": "flex", "gap": "16px", "marginBottom": "20px"}),
-        # --- Charts row 1: hourly activity per membership + weekday/weekend split ---
+        # --- Charts row 1: hourly activity per membership + avg duration ---
         html.Div(
             [
                 html.Div(dcc.Graph(id="hourly-activity-line"), style={**GRAPH_BOX, "flex": "1"}),
-                html.Div(dcc.Graph(id="hourly-weekend-bar"), style={**GRAPH_BOX, "flex": "1"}),
+                html.Div(dcc.Graph(id="hourly-duration-dist"), style={**GRAPH_BOX, "flex": "1"}),
             ],
             style={"display": "flex", "gap": "16px", "marginBottom": "16px"},
         ),
-        # --- Charts row 2: bike type bar + duration/distance scatter ---
+        # --- Charts row 2: avg distance by hour + bike type by hour ---
         html.Div(
             [
-                html.Div(dcc.Graph(id="hourly-biketype-bar"), style={**GRAPH_BOX, "flex": "1"}),
-                html.Div(dcc.Graph(id="hourly-duration-dist"), style={**GRAPH_BOX, "flex": "1"}),
+                html.Div(dcc.Graph(id="hourly-distance-line"), style={**GRAPH_BOX, "flex": "1"}),
+                html.Div(dcc.Graph(id="hourly-biketype-hour-line"), style={**GRAPH_BOX, "flex": "1"}),
             ],
             style={"display": "flex", "gap": "16px"},
         ),
@@ -113,9 +113,9 @@ def _kpi_card(label: str, value: str) -> html.Div:
     Output("hourly-member-filter", "options"),
     Output("hourly-kpis", "children"),
     Output("hourly-activity-line", "figure"),
-    Output("hourly-weekend-bar", "figure"),
-    Output("hourly-biketype-bar", "figure"),
     Output("hourly-duration-dist", "figure"),
+    Output("hourly-distance-line", "figure"),
+    Output("hourly-biketype-hour-line", "figure"),
     Input("hourly-member-filter", "value"),
 )
 def update_hourly(member_filter: str):
@@ -159,7 +159,11 @@ def update_hourly(member_filter: str):
     # --- Hourly activity by membership type ---
     hourly_member = (
         filtered.group_by("started_hour", "member_casual")
-        .agg(pl.col("ride_count").mean().alias("avg_rides"))
+        .agg(
+            pl.col("ride_count").sum().alias("total_rides"),
+            pl.col("metric_date").n_unique().alias("n_days"),
+        )
+        .with_columns((pl.col("total_rides") / pl.col("n_days")).alias("avg_rides"))
         .sort("started_hour")
     )
     fig_line = px.line(
@@ -173,41 +177,6 @@ def update_hourly(member_filter: str):
         color_discrete_map={"member": "#4e79a7", "casual": "#f28e2b"},
     )
     fig_line.update_layout(xaxis=dict(dtick=1), plot_bgcolor="white", paper_bgcolor="white")
-
-    # --- Weekday vs Weekend ---
-    we_agg = filtered.group_by("is_weekend", "member_casual").agg(pl.col("ride_count").mean().alias("avg_rides"))
-    we_agg = we_agg.with_columns(
-        pl.when(pl.col("is_weekend")).then(pl.lit("Weekend")).otherwise(pl.lit("Weekday")).alias("day_type")
-    )
-    fig_weekend = px.bar(
-        we_agg.to_pandas(),
-        x="day_type",
-        y="avg_rides",
-        color="member_casual",
-        barmode="group",
-        title="Avg Weekday vs Weekend Rides",
-        labels={"day_type": "", "avg_rides": "Avg Rides", "member_casual": "Membership"},
-        color_discrete_map={"member": "#4e79a7", "casual": "#f28e2b"},
-    )
-    fig_weekend.update_layout(plot_bgcolor="white", paper_bgcolor="white")
-
-    # --- Bike type distribution ---
-    bike_agg = (
-        filtered.group_by("rideable_type", "member_casual")
-        .agg(pl.col("ride_count").mean().alias("avg_rides"))
-        .sort("rideable_type")
-    )
-    fig_bike = px.bar(
-        bike_agg.to_pandas(),
-        x="rideable_type",
-        y="avg_rides",
-        color="member_casual",
-        barmode="group",
-        title="Avg Rides by Bike Type & Membership",
-        labels={"rideable_type": "Bike Type", "avg_rides": "Avg Rides", "member_casual": "Membership"},
-        color_discrete_map={"member": "#4e79a7", "casual": "#f28e2b"},
-    )
-    fig_bike.update_layout(plot_bgcolor="white", paper_bgcolor="white")
 
     # --- Avg Duration by Hour ---
     dur_hour = (
@@ -231,4 +200,49 @@ def update_hourly(member_filter: str):
     )
     fig_dur.update_layout(xaxis=dict(dtick=1), plot_bgcolor="white", paper_bgcolor="white")
 
-    return title, subtitle, options, kpis, fig_line, fig_weekend, fig_bike, fig_dur
+    # --- Avg Distance by Hour ---
+    dist_hour = (
+        filtered.group_by("started_hour", "member_casual")
+        .agg(
+            (pl.col("avg_ride_distance_km") * pl.col("ride_count")).sum().alias("w_dist"),
+            pl.col("ride_count").sum().alias("total"),
+            pl.col("metric_date").n_unique().alias("n_days"),
+        )
+        .with_columns((pl.col("w_dist") / pl.col("total")).alias("avg_distance"))
+        .sort("started_hour")
+    )
+    fig_dist = px.line(
+        dist_hour.to_pandas(),
+        x="started_hour",
+        y="avg_distance",
+        color="member_casual",
+        markers=True,
+        title="Avg Ride Distance by Hour",
+        labels={"started_hour": "Hour of Day", "avg_distance": "Avg Distance (km)", "member_casual": "Membership"},
+        color_discrete_map={"member": "#4e79a7", "casual": "#f28e2b"},
+    )
+    fig_dist.update_layout(xaxis=dict(dtick=1), plot_bgcolor="white", paper_bgcolor="white")
+
+    # --- Avg Hourly Rides by Bike Type ---
+    bike_hour = (
+        filtered.group_by("started_hour", "rideable_type")
+        .agg(
+            pl.col("ride_count").sum().alias("total_rides"),
+            pl.col("metric_date").n_unique().alias("n_days"),
+        )
+        .with_columns((pl.col("total_rides") / pl.col("n_days")).alias("avg_rides"))
+        .sort("started_hour")
+    )
+    fig_bike_hour = px.line(
+        bike_hour.to_pandas(),
+        x="started_hour",
+        y="avg_rides",
+        color="rideable_type",
+        markers=True,
+        title="Avg Hourly Rides by Bike Type",
+        labels={"started_hour": "Hour of Day", "avg_rides": "Avg Rides", "rideable_type": "Bike Type"},
+        color_discrete_map={"classic_bike": "#59a14f", "electric_bike": "#e15759"},
+    )
+    fig_bike_hour.update_layout(xaxis=dict(dtick=1), plot_bgcolor="white", paper_bgcolor="white")
+
+    return title, subtitle, options, kpis, fig_line, fig_dur, fig_dist, fig_bike_hour

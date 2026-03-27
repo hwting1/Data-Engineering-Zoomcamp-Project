@@ -7,7 +7,7 @@ from dash import Input, Output, callback, dcc, html, dash_table
 
 from data import load_hourly_metrics, load_monthly_metrics, load_top_stations
 
-dash.register_page(__name__, name="Monthly Metrics", path="/monthly")
+dash.register_page(__name__, name="Monthly Metrics", path="/monthly", order=3)
 
 CARD = {
     "backgroundColor": "white",
@@ -98,14 +98,7 @@ layout = html.Div(
             ],
             style={"display": "flex", "gap": "16px", "marginBottom": "16px"},
         ),
-        # --- Row 2: Duration trend + Distance trend ---
-        html.Div(
-            [
-                html.Div(dcc.Graph(id="monthly-dur-line"), style={**GRAPH_BOX, "flex": "1"}),
-                html.Div(dcc.Graph(id="monthly-dist-line"), style={**GRAPH_BOX, "flex": "1"}),
-            ],
-            style={"display": "flex", "gap": "16px", "marginBottom": "16px"},
-        ),
+
         # --- Row 3: Top 10 Departure Stations (bar + table) ---
         html.Div(
             [
@@ -190,8 +183,6 @@ def _station_table(rows: pl.DataFrame) -> dash_table.DataTable:
     Output("monthly-kpis", "children"),
     Output("monthly-rides-line", "figure"),
     Output("monthly-bike-stack", "figure"),
-    Output("monthly-dur-line", "figure"),
-    Output("monthly-dist-line", "figure"),
     Output("monthly-top-start-bar", "figure"),
     Output("monthly-top-start-table", "children"),
     Output("monthly-top-end-bar", "figure"),
@@ -205,8 +196,7 @@ def update_monthly(member_filter: str):
         empty_fig = px.line(title="No data available – run the pipeline first")
         no_opts = [{"label": "All", "value": "All"}]
         return ("Monthly Citi Bike Metrics", "(no data)", no_opts, [],
-                empty_fig, empty_fig, empty_fig, empty_fig,
-                empty_fig, html.Div(), empty_fig, html.Div())
+                empty_fig, empty_fig, empty_fig, html.Div(), empty_fig, html.Div())
 
     title = "Monthly Citi Bike Metrics"
 
@@ -216,17 +206,9 @@ def update_monthly(member_filter: str):
 
     n_months = filtered["metric_month"].n_unique()
     avg_monthly_rides = filtered["ride_count"].sum() / n_months
-    avg_dur = filtered.select(
-        (pl.col("avg_ride_duration_minutes") * pl.col("ride_count")).sum() / pl.col("ride_count").sum()
-    ).item()
-    avg_dist = filtered.select(
-        (pl.col("avg_ride_distance_km") * pl.col("ride_count")).sum() / pl.col("ride_count").sum()
-    ).item()
 
     kpis = [
         _kpi_card("Avg Monthly Rides", f"{avg_monthly_rides:,.0f}"),
-        _kpi_card("Avg Duration", f"{avg_dur:.1f} min"),
-        _kpi_card("Avg Distance", f"{avg_dist:.2f} km"),
         _kpi_card("Months Covered", str(n_months)),
     ]
 
@@ -235,17 +217,17 @@ def update_monthly(member_filter: str):
     # --- Monthly rides by membership ---
     rides_m = (
         filtered.group_by("metric_month", "member_casual")
-        .agg(pl.col("ride_count").mean().alias("avg_rides"))
+        .agg(pl.col("ride_count").sum().alias("total_rides"))
         .sort("metric_month")
     )
     fig_rides = px.line(
         rides_m.to_pandas(),
         x="metric_month",
-        y="avg_rides",
+        y="total_rides",
         color="member_casual",
         markers=True,
-        title="Avg Monthly Rides by Membership",
-        labels={"metric_month": "Month", "avg_rides": "Avg Rides", "member_casual": "Membership"},
+        title="Monthly Rides by Membership",
+        labels={"metric_month": "Month", "total_rides": "Total Rides", "member_casual": "Membership"},
         color_discrete_map={"member": "#4e79a7", "casual": "#f28e2b"},
     )
     fig_rides.update_layout(**_layout)
@@ -253,64 +235,22 @@ def update_monthly(member_filter: str):
     # --- Stacked bar by bike type ---
     bike_m = (
         filtered.group_by("metric_month", "rideable_type")
-        .agg(pl.col("ride_count").mean().alias("avg_rides"))
+        .agg(pl.col("ride_count").sum().alias("total_rides"))
         .sort("metric_month")
     )
     fig_bike = px.bar(
         bike_m.to_pandas(),
         x="metric_month",
-        y="avg_rides",
+        y="total_rides",
         color="rideable_type",
         barmode="stack",
-        title="Avg Rides by Bike Type per Month",
-        labels={"metric_month": "Month", "avg_rides": "Avg Rides", "rideable_type": "Bike Type"},
+        title="Rides by Bike Type per Month",
+        labels={"metric_month": "Month", "total_rides": "Total Rides", "rideable_type": "Bike Type"},
         color_discrete_map={"classic_bike": "#59a14f", "electric_bike": "#e15759"},
     )
     fig_bike.update_layout(**_layout)
 
-    # --- Avg duration trend ---
-    dur_m = (
-        filtered.group_by("metric_month", "member_casual")
-        .agg(
-            (pl.col("avg_ride_duration_minutes") * pl.col("ride_count")).sum().alias("w"),
-            pl.col("ride_count").sum().alias("n"),
-        )
-        .with_columns((pl.col("w") / pl.col("n")).alias("avg_duration"))
-        .sort("metric_month")
-    )
-    fig_dur = px.line(
-        dur_m.to_pandas(),
-        x="metric_month",
-        y="avg_duration",
-        color="member_casual",
-        markers=True,
-        title="Avg Ride Duration Over Time",
-        labels={"metric_month": "Month", "avg_duration": "Avg Duration (min)", "member_casual": "Membership"},
-        color_discrete_map={"member": "#4e79a7", "casual": "#f28e2b"},
-    )
-    fig_dur.update_layout(**_layout)
 
-    # --- Avg distance trend ---
-    dist_m = (
-        filtered.group_by("metric_month", "member_casual")
-        .agg(
-            (pl.col("avg_ride_distance_km") * pl.col("ride_count")).sum().alias("w"),
-            pl.col("ride_count").sum().alias("n"),
-        )
-        .with_columns((pl.col("w") / pl.col("n")).alias("avg_distance"))
-        .sort("metric_month")
-    )
-    fig_dist = px.line(
-        dist_m.to_pandas(),
-        x="metric_month",
-        y="avg_distance",
-        color="member_casual",
-        markers=True,
-        title="Avg Ride Distance Over Time",
-        labels={"metric_month": "Month", "avg_distance": "Avg Distance (km)", "member_casual": "Membership"},
-        color_discrete_map={"member": "#4e79a7", "casual": "#f28e2b"},
-    )
-    fig_dist.update_layout(**_layout)
 
     # --- Top 10 Departure Stations ---
     start_rows = pl.DataFrame(load_top_stations("start", 10))
@@ -349,5 +289,4 @@ def update_monthly(member_filter: str):
         tbl_end = html.Div("No data")
 
     return (title, _subtitle, options, kpis,
-            fig_rides, fig_bike, fig_dur, fig_dist,
-            fig_start, tbl_start, fig_end, tbl_end)
+            fig_rides, fig_bike, fig_start, tbl_start, fig_end, tbl_end)
