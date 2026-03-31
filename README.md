@@ -40,8 +40,6 @@ Ride volume is strongly seasonal, peaking in summer and troughing in winter, but
 ### Year-over-Year Growth
 Comparing 2024 to 2025 in full reveals which months, membership segments, and bike types drove aggregate growth. Was growth evenly distributed across the year, or concentrated in specific months? Did annual members and casual riders move in opposite directions? How rapidly is electric bike adoption displacing classic bikes? Isolating these year-over-year dynamics separates genuine demand growth from seasonal noise.
 
-The pipeline runs on the **15th of every month**, processing the prior month's data so the analysis always reflects the most recent complete month.
-
 ---
 
 ## Dashboard Insights
@@ -68,7 +66,7 @@ The following findings are drawn from the interactive dashboard covering **92.8 
 - **2026 data (Jan–Feb):** Jan 2026 recorded 1.81 M rides and Feb 1.21 M, continuing the expected winter dip. Electric bikes already account for ~71% of member rides in these two months, reflecting the accelerating shift away from classic bikes.
 - The top 10 departure stations are clustered in Midtown/Chelsea and along the waterfront: **W 21 St & 6 Ave** leads with ~13,200 avg monthly trips, followed by **Pier 61 at Chelsea Piers** (~11,500) and **Lafayette St & E 8 St** (~11,200). The top 10 arrival stations are identical to the top departure stations — the same 10 locations appear in both lists, confirming these as true two-way hubs.
 
-### 2024 vs 2025 Year-over-Year Comparison
+### Page 4 — 2024 vs 2025 Year-over-Year Comparison
 - Total rides grew from **44.2 M (2024)** to **45.6 M (2025)**, a net **+3.3%** increase — but the pattern was uneven across months.
 - **Growth was concentrated in early 2025**: Jan +12.6%, Mar +18.9%, Apr +15.7%, Aug +11.3%.
 - **H2 2025 saw a pullback**: Oct −8.1%, Nov −7.9%, Dec −9.5%, suggesting ridership normalisation after a strong first half.
@@ -76,3 +74,161 @@ The following findings are drawn from the interactive dashboard covering **92.8 
 - **Electric bike uptake accelerated**: classic bike rides fell −9.9% (15.0 M → 13.5 M), while electric bike rides rose +10.1% (29.2 M → 32.1 M), pushing e-bikes to **70% of 2025 rides** (up from 66% in 2024).
 
 The Dashboard has been deployed on [Plotly Cloud](https://c363df96-4c8c-4947-9c8f-0b1faeb922f2.plotly.app/)
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+Install the following tools before proceeding:
+
+**Terraform**
+```bash
+wget -O - https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install -y terraform
+```
+
+**Bruin**
+```bash
+curl -LsSf https://getbruin.com/install/cli | sh
+```
+
+**uv**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Verify installations:
+
+```bash
+terraform -version
+bruin --version
+uv --version
+```
+
+---
+
+### 1. GCP Credentials
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a service account with the following roles:
+   - **BigQuery Admin**
+   - **Storage Admin**
+
+2. Download the service account JSON key and save it at the **project root** as `de-admin-credentials.json`:
+
+```
+Data-Engineering-Zoomcamp-Project/
+└── de-admin-credentials.json   ← place it here
+```
+
+> This path is the default expected by both Terraform and the dashboard. Do not rename it unless you update the references below.
+
+---
+
+### 2. Configure Each Component
+
+**a) Terraform — `terraform/variables.tf`**
+
+Update the `project` default to match your GCP project ID (the `credentials` path is already set to `../de-admin-credentials.json` relative to the `terraform/` directory):
+
+```hcl
+variable "project" {
+  description = "GCP Project ID"
+  default     = "your-gcp-project-id"   # ← change this
+}
+```
+
+Alternatively, pass the values at `make` time without editing the file (see the [Running the Pipeline](#running-the-pipeline) section).
+
+---
+
+
+> **Note:** The repo provides `.bruin.yml.example`. You must rename it to `.bruin.yml` first — Bruin will not read the `.example` file.
+
+```bash
+mv .bruin.yml.example .bruin.yml
+```
+
+Then edit `.bruin.yml`:
+
+```yaml
+default_environment: default
+environments:
+    default:
+        connections:
+            google_cloud_platform:
+                - name: nyc_citibike
+                  project_id: your-gcp-project-id   # ← change this
+                  service_account_json: |
+                    {
+                      "type": "service_account",
+                      ...                             # ← paste full JSON key
+                    }
+```
+
+> The connection name `nyc_citibike` must stay unchanged — it is referenced by every asset in `citibike-pipeline/`.
+
+---
+
+**c) Dashboard — `dashboard/.env`**
+
+> **Note:** The repo provides `dashboard/env.example`. You must rename it to `dashboard/.env` first — the dashboard will not load the `.example` file.
+
+```bash
+mv dashboard/env.example dashboard/.env
+```
+
+Then edit `dashboard/.env`:
+
+```dotenv
+GCP_PROJECT_ID=your-gcp-project-id
+GOOGLE_APPLICATION_CREDENTIALS=../de-admin-credentials.json
+```
+
+> The credentials path is relative to the `dashboard/` directory. The default `../de-admin-credentials.json` points to the project root where you saved the key.
+
+---
+
+### Running the Pipeline
+
+Once configuration is complete, use `make` to drive the entire workflow.
+
+**Provision infrastructure:**
+
+```bash
+make deploy
+```
+
+Or, if you prefer not to edit `variables.tf`, pass the values inline:
+
+```bash
+make deploy GCP_PROJECT=your-gcp-project-id GCP_CREDENTIALS=../de-admin-credentials.json
+```
+
+**Run the Bruin pipeline** (processes the previous month by default):
+
+```bash
+make run
+```
+
+Optionally run a full historical backfill:
+
+```bash
+make run FULL_REFRESH=1 START_DATE=2024-01-01 END_DATE=2025-12-31
+```
+
+**Launch the dashboard locally:**
+
+```bash
+make dashboard
+```
+
+The app will be available at `http://localhost:8050`.
+
+**Tear down infrastructure** (destructive — deletes the GCS bucket and BigQuery datasets):
+
+```bash
+make destroy
+```
