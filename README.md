@@ -29,7 +29,7 @@ Raw trip records are fetched monthly from the [Citi Bike public S3 bucket](https
 New York City's Citi Bike programme generates millions of trip records every month. While the raw data is publicly available, it is split into separate monthly ZIP archives on S3 and contains no pre-computed analytics — making it hard to answer operational and strategic questions across different time scales.
 
 ### Intra-Day Patterns
-Within a single day, ride demand is far from uniform. Are there clear morning and evening commuter peaks, and do members and casual riders follow fundamentally different demand curves? How do trip duration, distance, and speed shift across the hours — do riders move faster and farther at certain times? Understanding intra-day behaviour is essential for capacity planning and rebalancing docks at high-demand hours.
+Within a single day, ride demand is far from uniform. Are there clear morning and evening commuter peaks, and do members and casual riders follow fundamentally different demand curves? How do trip duration and distance shift across the hours — do riders travel farther at certain times? Understanding intra-day behaviour is essential for capacity planning and rebalancing docks at high-demand hours.
 
 ### Day-of-Week Patterns
 Aggregated across the full dataset, certain weekdays consistently attract more rides than others. Do members and casual riders gravitate toward different days — mid-week commuters vs. weekend leisure riders? Does the mix of classic and electric bikes shift depending on the day? Identifying structural day-of-week patterns helps distinguish commuter demand from recreational demand.
@@ -49,9 +49,10 @@ The following findings are drawn from the interactive dashboard covering **92.8 
 
 ### Page 1 — Hourly Metrics
 - **Dual commuter peaks** are clearly visible for members: ride volume surges at **08:00** (5.3 M member rides) and again at **17:00** (7.1 M member rides) — the single busiest hour in the entire dataset.
-- **Casual riders follow a leisure curve**, peaking in the midday window (13:00–16:00, ~1.1–1.3 M rides per hour) with no distinct morning spike.
-- **Trip duration diverges sharply by membership type.** Member average duration remains flat at ~10–12 min throughout the day, while casual duration peaks at 13:00–14:00 (~21.4 min) — nearly twice as long.
+- **Casual riders show a broad afternoon curve**, building through midday (13:00–16:00, ~1.1–1.3 M rides per hour) and peaking at **17:00 (1.4 M)** — without the sharp twin-spike shape seen for members, and with no distinct morning spike.
+- **Trip duration diverges sharply by membership type.** Member average duration ranges ~9–12 min throughout the day (shortest at the pre-dawn 05:00 rush, longest at 17:00), while casual duration peaks at 13:00–14:00 (~21.4 min) — nearly twice as long.
 - **Electric bikes lead across all hours**, accounting for roughly 68% of rides at every time slot. The advantage is most pronounced during commute hours, where members strongly prefer e-bikes.
+- **Ride distance by hour** is more variable for members, dipping to ~1.8 km at midday (12:00–13:00) and reaching ~2.4 km at the 06:00 commute peak; casual riders maintain a steadier ~2.1–2.4 km throughout the day.
 - Weekday trips average **12.0 min** vs. weekend trips **14.1 min**, driven by casual riders extending trip length on weekends.
 
 ### Page 2 — Weekly Trend
@@ -64,8 +65,8 @@ The following findings are drawn from the interactive dashboard covering **92.8 
 - **Strong seasonality** repeats every year: rides ramp up from March, peak in September–October, and trough in January–February.
 - **September 2025** (5.27 M) is the highest single-month total in the dataset; **October 2024** (5.13 M) is the second highest.
 - Winter troughs (~1.8–2.1 M in Jan–Feb) are less than **40%** of peak months.
-- **2026 data (Jan–Feb):** Jan 2026 recorded 1.81 M rides and Feb 1.21 M, continuing the expected winter dip. Electric bikes already account for ~83% of member rides in these two months, reflecting the accelerating shift away from classic bikes.
-- The top 10 departure stations are clustered in Midtown/Chelsea and along the waterfront: **W 21 St & 6 Ave** leads with ~13,200 avg monthly trips, followed by **Pier 61 at Chelsea Piers** (~11,500) and **Lafayette St & E 8 St** (~11,200).
+- **2026 data (Jan–Feb):** Jan 2026 recorded 1.81 M rides and Feb 1.21 M, continuing the expected winter dip. Electric bikes already account for ~71% of member rides in these two months, reflecting the accelerating shift away from classic bikes.
+- The top 10 departure stations are clustered in Midtown/Chelsea and along the waterfront: **W 21 St & 6 Ave** leads with ~13,200 avg monthly trips, followed by **Pier 61 at Chelsea Piers** (~11,500) and **Lafayette St & E 8 St** (~11,200). The top 10 arrival stations are identical to the top departure stations — the same 10 locations appear in both lists, confirming these as true two-way hubs.
 
 ### 2024 vs 2025 Year-over-Year Comparison
 - Total rides grew from **44.2 M (2024)** to **45.6 M (2025)**, a net **+3.3%** increase — but the pattern was uneven across months.
