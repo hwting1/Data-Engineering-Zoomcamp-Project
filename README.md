@@ -1,5 +1,15 @@
 # NYC Citi Bike Data Pipeline
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Problem Description](#problem-description)
+- [Dashboard Insights](#dashboard-insights)
+- [Project Setup](#project-setup)
+- [Pipeline Layers](#pipeline-layers)
+- [Data Quality Checks](#data-quality-checks)
+- [GitHub Actions](#github-actions)
+
 ## Overview
 
 This project builds an end-to-end data engineering pipeline for NYC Citi Bike trip data as part of the [Data Engineering Zoomcamp](https://github.com/DataTalksClub/data-engineering-zoomcamp) capstone project.
@@ -77,7 +87,7 @@ The Dashboard has been deployed on [Plotly Cloud](https://c363df96-4c8c-4947-9c8
 
 ---
 
-## Getting Started
+## Project Setup
 
 ### Prerequisites
 
@@ -201,11 +211,28 @@ Once configuration is complete, use `make` to drive the entire workflow.
 make deploy
 ```
 
+Equivalent bash commands:
+
+```bash
+terraform -chdir=terraform init
+terraform -chdir=terraform plan
+terraform -chdir=terraform apply
+```
+
 Or, if you prefer not to edit `variables.tf`, pass the values inline:
 
 ```bash
-make deploy GCP_PROJECT=your-gcp-project-id GCP_CREDENTIALS=../de-admin-credentials.json
+make deploy GCP_PROJECT=your-gcp-project-id GCP_CREDENTIALS=your/path/to/credentials.json
 ```
+
+Equivalent bash commands:
+
+```bash
+terraform -chdir=terraform init
+terraform -chdir=terraform plan -var "credentials=your/path/to/credentials.json" -var "project=your-gcp-project-id"
+terraform -chdir=terraform apply -var "credentials=your/path/to/credentials.json" -var "project=your-gcp-project-id"
+```
+
 
 **Run the Bruin pipeline** (processes the previous month by default):
 
@@ -213,16 +240,36 @@ make deploy GCP_PROJECT=your-gcp-project-id GCP_CREDENTIALS=../de-admin-credenti
 make run
 ```
 
+Equivalent bash command:
+
+```bash
+bruin run ./citibike-pipeline
+```
+
 Optionally run a full historical backfill:
 
 ```bash
-make run FULL_REFRESH=1 START_DATE=2024-01-01 END_DATE=2025-12-31
+make run FULL_REFRESH=1 START_DATE=2024-02-15 END_DATE=2026-03-15
 ```
+
+Equivalent bash command:
+
+```bash
+bruin run ./citibike-pipeline --full-refresh --start-date 2024-02-15 --end-date 2026-03-15
+```
+
+> Because the Citi Bike data format changed in 2024, this pipeline is designed for the post-2024 file structure, and the pipeline `start_date` must not be earlier than `2024-02-15`.
 
 **Launch the dashboard locally:**
 
 ```bash
 make dashboard
+```
+
+Equivalent bash command:
+
+```bash
+cd dashboard && uv sync && uv run plotly app run app:app --host 0.0.0.0 --debug
 ```
 
 The app will be available at `http://localhost:8050`.
@@ -232,3 +279,78 @@ The app will be available at `http://localhost:8050`.
 ```bash
 make destroy
 ```
+
+Equivalent bash command:
+
+```bash
+terraform -chdir=terraform destroy
+```
+
+---
+
+## Pipeline Layers
+
+### Layer 1 — Ingestion (`ingestion.storage` + `raw.citibike_trips`)
+The ingestion layer covers both file landing and raw table loading. First, the Python asset `ingestion.storage` downloads the monthly Citi Bike ZIP archives from the public S3 bucket, extracts the CSV files, converts them to Parquet with Polars, and uploads the result to Google Cloud Storage. Then `raw.citibike_trips` loads those landed Parquet files from GCS into BigQuery with minimal reshaping.
+
+This layer is responsible for:
+- fetching the source files for each run window
+- normalising the file format from CSV to Parquet
+- landing the files in GCS
+- loading a reproducible raw copy into BigQuery with metadata such as `source_month` and `loaded_at`
+
+### Layer 2 — Staging (`staging.citibike_trips_clean`)
+This is the main cleaning and standardisation layer. It trims text fields, filters invalid records, derives trip duration and geospatial distance, and adds analytics-ready columns such as `started_date`, `started_month`, `started_hour`, and `day_of_week`.
+
+This is also the layer where the core data validation logic is applied before records flow into reporting tables.
+
+### Layer 3 — Report (`report.*`)
+The report layer contains analytics-ready tables used by the dashboard:
+
+| Table | Description |
+|---|---|
+| `report.hourly_usage_metrics` | Hourly ride volume, station counts, ride duration, distance, and speed metrics |
+| `report.weekly_citibike_trend` | Day-of-week aggregates split by membership type and bike type |
+| `report.monthly_citibike_metrics` | Monthly ridership, duration, distance, speed, and station activity summaries |
+
+Together, these three layers separate ingestion, cleaning, and presentation logic, which makes the pipeline easier to maintain and backfill.
+
+---
+
+## Data Quality Checks
+
+The project currently includes **42 Bruin quality checks** across the staging and report layers.
+
+These checks focus on schema reliability and analytical consistency, including:
+
+- `not_null` checks on required business and partition columns
+- `accepted_values` checks on controlled dimensions such as `rideable_type` and `member_casual`
+- staging-level filtering rules that exclude invalid trips before they reach reporting tables
+
+Examples of records filtered out in staging include:
+
+- rows with missing or invalid latitude/longitude values
+- rows where `ended_at < started_at`
+- placeholder values such as `ride_id = 'nan'`
+- coordinates outside valid geographic bounds
+
+The pipeline also uses idempotent load patterns to keep reruns consistent:
+
+- the raw load deletes the target date window before reinserting it
+- the staging table uses incremental `delete+insert` by `started_date`
+- report tables are rebuilt with `create+replace`
+
+This means data quality in this project is enforced through a combination of Bruin checks and deterministic reload logic rather than a separate reconciliation framework.
+
+---
+
+## GitHub Actions
+
+The repository currently includes one GitHub Actions workflow: `.github/workflows/bruin-validate.yml`.
+
+This workflow runs when:
+
+- code is pushed to `main`
+- the changes affect files under `citibike-pipeline/**`
+
+Its purpose is to run `bruin validate ./citibike-pipeline/` and verify that the pipeline structure, asset metadata, and dependencies are valid before changes are merged into the main workflow.
