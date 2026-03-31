@@ -55,4 +55,4 @@ run:
 	$(if $(END_DATE),--end-date $(END_DATE),)
 
 dashboard:
-	cd dashboard && uv run plotly app run app:app --host 0.0.0.0 --debug
+	cd dashboard && uv sync && uv run plotly app run app:app --host 0.0.0.0 --debug
