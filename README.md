@@ -124,7 +124,7 @@ uv --version
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a service account with the following roles:
    - **BigQuery Admin**
-   - **Storage Admin**
+   - **Storage Object Admin**
 
 2. Download the service account JSON key and save it at the **project root** as `de-admin-credentials.json`:
 
@@ -246,7 +246,9 @@ Equivalent bash command:
 bruin run ./citibike-pipeline
 ```
 
-Optionally run a full historical backfill:
+**First run — full historical backfill (required):**
+
+> The staging layer uses a `delete+insert` incremental strategy. On the very first run the staging table does not yet exist, so you **must** pass `FULL_REFRESH=1` to let Bruin create it from scratch. Subsequent scheduled runs (`make run`) can then apply incremental updates safely.
 
 ```bash
 make run FULL_REFRESH=1 START_DATE=2024-02-15 END_DATE=2026-03-15
