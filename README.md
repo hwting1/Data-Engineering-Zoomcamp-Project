@@ -63,11 +63,15 @@ The following findings are drawn from the interactive dashboard covering **92.8 
 - **Ride distance by hour** is more variable for members, dipping to ~1.8 km at midday (12:00–13:00) and reaching ~2.4 km at the 06:00 commute peak; casual riders maintain a steadier ~2.1–2.4 km throughout the day.
 - Weekday trips average **12.0 min** vs. weekend trips **14.1 min**, driven by casual riders extending trip length on weekends.
 
+![image](./assets/hourly.png)
+
 ### Page 2 — Weekly Trend
 - **Members** are busiest mid-week: Tuesday (11.9 M) and Wednesday (11.9 M) record the highest ride counts; Sunday (8.6 M) is the quietest day for members.
 - **Casual riders** peak on **Saturday** (3.3 M rides, avg 21.1 min / 2.33 km) — their longest and farthest trips of the week — and drop to a low on Monday (2.0 M).
 - Overall, **Friday tops total ridership** (14.1 M), while **Sunday is the quietest day** across all riders (11.4 M), lower even than Monday.
 - Average distance is slightly higher on weekends for both groups (members: 2.0–2.05 km Sat/Sun vs. ~1.94–1.98 km weekdays), consistent with leisure trip patterns.
+
+![image](./assets/weekly.png)
 
 ### Page 3 — Monthly Metrics (2024 – 2026)
 - **Strong seasonality** repeats every year: rides ramp up from March, peak in September–October, and trough in January–February.
@@ -76,6 +80,8 @@ The following findings are drawn from the interactive dashboard covering **92.8 
 - **2026 data (Jan–Feb):** Jan 2026 recorded 1.81 M rides and Feb 1.21 M, continuing the expected winter dip. Electric bikes already account for ~71% of member rides in these two months, reflecting the accelerating shift away from classic bikes.
 - The top 10 departure stations are clustered in Midtown/Chelsea and along the waterfront: **W 21 St & 6 Ave** leads with ~13,200 avg monthly trips, followed by **Pier 61 at Chelsea Piers** (~11,500) and **Lafayette St & E 8 St** (~11,200). The top 10 arrival stations are identical to the top departure stations — the same 10 locations appear in both lists, confirming these as true two-way hubs.
 
+![image](./assets/monthly.png)
+
 ### Page 4 — 2024 vs 2025 Year-over-Year Comparison
 - Total rides grew from **44.2 M (2024)** to **45.6 M (2025)**, a net **+3.3%** increase — but the pattern was uneven across months.
 - **Growth was concentrated in early 2025**: Jan +12.6%, Mar +18.9%, Apr +15.7%, Aug +11.3%.
@@ -83,7 +89,9 @@ The following findings are drawn from the interactive dashboard covering **92.8 
 - **Annual members drove all growth**: +5.6% (35.7 M → 37.7 M), while casual riders declined −6.6% (8.5 M → 7.9 M).
 - **Electric bike uptake accelerated**: classic bike rides fell −9.9% (15.0 M → 13.5 M), while electric bike rides rose +10.1% (29.2 M → 32.1 M), pushing e-bikes to **70% of 2025 rides** (up from 66% in 2024).
 
-The Dashboard has been deployed on [Plotly Cloud](https://c363df96-4c8c-4947-9c8f-0b1faeb922f2.plotly.app/)
+![image](./assets/yoy.png)
+
+The Dashboard has been deployed on [Plotly Cloud](https://c363df96-4c8c-4947-9c8f-0b1faeb922f2.plotly.app/) (It will become inaccessible after the GCP project is shut down on 5/11.)
 
 ---
 
